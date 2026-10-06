@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audio Interface Diag</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">AID<span>Audio Interface Diag</span></div>
+    <nav>
+      <button class="nav active" data-mode="live">Live</button>
+      <button class="nav" data-mode="daw">DAW</button>
+      <button class="nav" data-mode="engineer">Engineer</button>
+      <button class="nav" data-mode="devices">Devices</button>
+      <button class="nav" data-mode="reports">Reports</button>
+    </nav>
+  </aside>
+  <main>
+    <header>
+      <div><h1 id="title">Live</h1><p id="subtitle">Passive performance monitoring</p></div>
+      <div class="status"><span class="dot"></span><span id="health">Monitoring idle</span></div>
+    </header>
+    <section class="cards">
+      <article><label>Device</label><strong id="device">No device selected</strong></article>
+      <article><label>Host API</label><strong id="api">—</strong></article>
+      <article><label>Sample rate</label><strong id="rate">—</strong></article>
+      <article><label>Buffer</label><strong id="buffer">—</strong></article>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2 id="panel-title">Live health</h2><button id="primary">Start passive monitor</button></div>
+      <div class="meters">
+        <div><label>Input peak</label><meter min="-60" max="0" value="-60" id="inMeter"></meter><span id="inVal">-∞ dBFS</span></div>
+        <div><label>Output peak</label><meter min="-60" max="0" value="-60" id="outMeter"></meter><span id="outVal">-∞ dBFS</span></div>
+      </div>
+      <div class="stats">
+        <div><span>XRuns</span><b id="xruns">0</b></div>
+        <div><span>Discontinuities</span><b id="disc">0</b></div>
+        <div><span>Callback margin</span><b id="margin">—</b></div>
+        <div><span>Session</span><b id="elapsed">00:00:00</b></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Event timeline</h2>
+      <div id="timeline" class="timeline"><p class="muted">No events yet.</p></div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
