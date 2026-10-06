@@ -1,0 +1,23 @@
+[package]
+name = "audio-interface-diag"
+version = "0.1.0"
+edition = "2021"
+description = "Audio interface diagnostics for live, DAW and engineering workflows"
+license = "LicenseRef-Proprietary-TBD"
+
+[lib]
+name = "audio_interface_diag"
+path = "src/lib.rs"
+
+[[bin]]
+name = "audio-interface-diag"
+path = "src/main.rs"
+
+[features]
+default = []
+native-audio = ["dep:cpal"]
+
+[dependencies]
+cpal = { version = "0.15", optional = true }
+
+[dev-dependencies]
