@@ -1,8 +1,17 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Edition { Live, Daw, Engineer }
+pub enum Edition {
+    Live,
+    Daw,
+    Engineer,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Severity { Pass, Info, Warn, Fail }
+pub enum Severity {
+    Pass,
+    Info,
+    Warn,
+    Fail,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceCapability {
