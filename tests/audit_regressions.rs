@@ -71,3 +71,42 @@ fn passive_session_cannot_be_armed() {
     );
     assert_eq!(session.state, RunState::Ready);
 }
+
+#[test]
+fn zero_callbacks_never_report_clean_pass() {
+    let findings = assess_stream(StreamStats {
+        sample_rate: 48_000.0,
+        buffer_frames: 128,
+        callback_count: 0,
+        xruns: 0,
+        discontinuities: 0,
+        max_callback_ms: 0.0,
+        cpu_load: 0.0,
+    });
+
+    assert!(findings
+        .iter()
+        .any(|finding| finding.severity == Severity::Fail));
+    assert!(!findings
+        .iter()
+        .any(|finding| finding.id == "stream.clean"));
+}
+
+#[test]
+fn delay_estimator_rejects_silent_or_non_finite_measurements() {
+    assert_eq!(
+        estimate_delay_samples(&[0.0, 0.0, 0.0], &[0.0, 0.0, 0.0], 2),
+        None
+    );
+    assert_eq!(
+        estimate_delay_samples(&[1.0, f32::NAN], &[0.0, 1.0, 0.0], 2),
+        None
+    );
+}
+
+#[test]
+fn level_analysis_rejects_non_finite_samples() {
+    assert_eq!(dbfs_rms(&[0.5, f32::NAN]), None);
+    assert_eq!(peak_dbfs(&[0.5, f32::INFINITY]), None);
+    assert_eq!(dc_offset(&[0.5, f32::NAN]), None);
+}
