@@ -180,8 +180,9 @@ pub fn assess_stream(stats: StreamStats) -> Vec<Finding> {
                 "{:.3} ms worst callback vs {:.3} ms buffer period",
                 stats.max_callback_ms, period_ms
             ),
-            action: "Increase buffer size or reduce real-time load before continuing critical work."
-                .into(),
+            action:
+                "Increase buffer size or reduce real-time load before continuing critical work."
+                    .into(),
         });
     } else if stats.max_callback_ms > period_ms * 0.8 {
         findings.push(Finding {
