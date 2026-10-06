@@ -59,7 +59,12 @@ impl TestSession {
 
     pub fn start(&mut self) -> Result<(), &'static str> {
         if self.test.intrusive {
+            if self.edition != Edition::Engineer {
+                self.output_enabled = false;
+                return Err("active tests require Engineer edition");
+            }
             if self.state != RunState::Armed {
+                self.output_enabled = false;
                 return Err("active test must be armed");
             }
             self.output_enabled = true;

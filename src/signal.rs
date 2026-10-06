@@ -30,9 +30,7 @@ pub fn sine(
     let amp = dbfs_to_linear(dbfs)?;
 
     Ok((0..frames)
-        .map(|i| {
-            (amp * (2.0 * PI * frequency_hz * i as f64 / sample_rate).sin()) as f32
-        })
+        .map(|i| (amp * (2.0 * PI * frequency_hz * i as f64 / sample_rate).sin()) as f32)
         .collect())
 }
 

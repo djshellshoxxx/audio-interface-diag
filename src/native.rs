@@ -13,7 +13,9 @@ pub struct NativeDeviceSummary {
 pub fn enumerate_native_devices() -> Result<Vec<NativeDeviceSummary>, String> {
     let host = cpal::default_host();
     let host_api = format!("{:?}", host.id());
-    let default_input = host.default_input_device().and_then(|device| device.name().ok());
+    let default_input = host
+        .default_input_device()
+        .and_then(|device| device.name().ok());
     let default_output = host
         .default_output_device()
         .and_then(|device| device.name().ok());

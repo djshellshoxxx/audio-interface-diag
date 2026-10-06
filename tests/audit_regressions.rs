@@ -15,9 +15,7 @@ fn invalid_sample_rate_never_reports_clean_pass() {
     assert!(findings
         .iter()
         .any(|finding| finding.severity == Severity::Fail));
-    assert!(!findings
-        .iter()
-        .any(|finding| finding.id == "stream.clean"));
+    assert!(!findings.iter().any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -35,9 +33,7 @@ fn non_finite_stream_values_never_report_clean_pass() {
     assert!(findings
         .iter()
         .any(|finding| finding.severity == Severity::Fail));
-    assert!(!findings
-        .iter()
-        .any(|finding| finding.id == "stream.clean"));
+    assert!(!findings.iter().any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -65,10 +61,7 @@ fn passive_session_cannot_be_armed() {
 
     session.prepare().unwrap();
 
-    assert_eq!(
-        session.arm(),
-        Err("passive tests do not require arming")
-    );
+    assert_eq!(session.arm(), Err("passive tests do not require arming"));
     assert_eq!(session.state, RunState::Ready);
 }
 
@@ -87,9 +80,7 @@ fn zero_callbacks_never_report_clean_pass() {
     assert!(findings
         .iter()
         .any(|finding| finding.severity == Severity::Fail));
-    assert!(!findings
-        .iter()
-        .any(|finding| finding.id == "stream.clean"));
+    assert!(!findings.iter().any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -109,4 +100,24 @@ fn level_analysis_rejects_non_finite_samples() {
     assert_eq!(dbfs_rms(&[0.5, f32::NAN]), None);
     assert_eq!(peak_dbfs(&[0.5, f32::INFINITY]), None);
     assert_eq!(dc_offset(&[0.5, f32::NAN]), None);
+}
+
+#[test]
+fn active_start_rechecks_engineer_edition_before_enabling_output() {
+    let test = plan(Edition::Engineer)
+        .into_iter()
+        .find(|test| test.intrusive)
+        .unwrap();
+    let mut session = TestSession::new(Edition::Live, test);
+
+    session.prepare().unwrap();
+    // Publicly-restored or corrupted state must not bypass the edition gate.
+    session.state = RunState::Armed;
+
+    assert_eq!(
+        session.start(),
+        Err("active tests require Engineer edition")
+    );
+    assert!(!session.output_enabled);
+    assert_eq!(session.state, RunState::Armed);
 }

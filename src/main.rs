@@ -17,7 +17,11 @@ fn main() {
         println!(
             "- {:?}{}{}",
             test.kind,
-            if test.intrusive { " [active]" } else { " [passive]" },
+            if test.intrusive {
+                " [active]"
+            } else {
+                " [passive]"
+            },
             if test.requires_loopback_cable {
                 " [loopback cable]"
             } else {
