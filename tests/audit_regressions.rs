@@ -12,8 +12,12 @@ fn invalid_sample_rate_never_reports_clean_pass() {
         cpu_load: 0.1,
     });
 
-    assert!(findings.iter().any(|f| f.severity == Severity::Fail));
-    assert!(!findings.iter().any(|f| f.id == "stream.clean"));
+    assert!(findings
+        .iter()
+        .any(|finding| finding.severity == Severity::Fail));
+    assert!(!findings
+        .iter()
+        .any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -28,8 +32,12 @@ fn non_finite_stream_values_never_report_clean_pass() {
         cpu_load: f64::NAN,
     });
 
-    assert!(findings.iter().any(|f| f.severity == Severity::Fail));
-    assert!(!findings.iter().any(|f| f.id == "stream.clean"));
+    assert!(findings
+        .iter()
+        .any(|finding| finding.severity == Severity::Fail));
+    assert!(!findings
+        .iter()
+        .any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -54,8 +62,12 @@ fn sweep_rejects_non_finite_parameters() {
 fn passive_session_cannot_be_armed() {
     let test = plan(Edition::Live).into_iter().next().unwrap();
     let mut session = TestSession::new(Edition::Live, test);
+
     session.prepare().unwrap();
 
-    assert_eq!(session.arm(), Err("passive tests do not require arming"));
+    assert_eq!(
+        session.arm(),
+        Err("passive tests do not require arming")
+    );
     assert_eq!(session.state, RunState::Ready);
 }
