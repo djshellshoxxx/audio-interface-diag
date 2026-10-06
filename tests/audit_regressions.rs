@@ -15,9 +15,7 @@ fn invalid_sample_rate_never_reports_clean_pass() {
     assert!(findings
         .iter()
         .any(|finding| finding.severity == Severity::Fail));
-    assert!(!findings
-        .iter()
-        .any(|finding| finding.id == "stream.clean"));
+    assert!(!findings.iter().any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -35,9 +33,7 @@ fn non_finite_stream_values_never_report_clean_pass() {
     assert!(findings
         .iter()
         .any(|finding| finding.severity == Severity::Fail));
-    assert!(!findings
-        .iter()
-        .any(|finding| finding.id == "stream.clean"));
+    assert!(!findings.iter().any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
@@ -65,10 +61,7 @@ fn passive_session_cannot_be_armed() {
 
     session.prepare().unwrap();
 
-    assert_eq!(
-        session.arm(),
-        Err("passive tests do not require arming")
-    );
+    assert_eq!(session.arm(), Err("passive tests do not require arming"));
     assert_eq!(session.state, RunState::Ready);
 }
 
@@ -87,9 +80,7 @@ fn zero_callbacks_never_report_clean_pass() {
     assert!(findings
         .iter()
         .any(|finding| finding.severity == Severity::Fail));
-    assert!(!findings
-        .iter()
-        .any(|finding| finding.id == "stream.clean"));
+    assert!(!findings.iter().any(|finding| finding.id == "stream.clean"));
 }
 
 #[test]
