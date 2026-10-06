@@ -1,7 +1,7 @@
 use crate::model::{Finding, Severity, StreamStats};
 
 pub fn dbfs_rms(samples: &[f32]) -> Option<f64> {
-    if samples.is_empty() {
+    if samples.is_empty() || samples.iter().any(|sample| !sample.is_finite()) {
         return None;
     }
 
@@ -19,6 +19,10 @@ pub fn dbfs_rms(samples: &[f32]) -> Option<f64> {
 }
 
 pub fn peak_dbfs(samples: &[f32]) -> Option<f64> {
+    if samples.iter().any(|sample| !sample.is_finite()) {
+        return None;
+    }
+
     let peak = samples.iter().map(|x| x.abs() as f64).reduce(f64::max)?;
 
     if peak == 0.0 {
@@ -29,7 +33,7 @@ pub fn peak_dbfs(samples: &[f32]) -> Option<f64> {
 }
 
 pub fn dc_offset(samples: &[f32]) -> Option<f64> {
-    if samples.is_empty() {
+    if samples.is_empty() || samples.iter().any(|sample| !sample.is_finite()) {
         return None;
     }
 
@@ -38,7 +42,10 @@ pub fn dc_offset(samples: &[f32]) -> Option<f64> {
 
 pub fn correlation(a: &[f32], b: &[f32]) -> Option<f64> {
     let n = a.len().min(b.len());
-    if n < 2 {
+    if n < 2
+        || a[..n].iter().any(|sample| !sample.is_finite())
+        || b[..n].iter().any(|sample| !sample.is_finite())
+    {
         return None;
     }
 
@@ -71,7 +78,11 @@ pub fn estimate_delay_samples(
     captured: &[f32],
     max_delay: usize,
 ) -> Option<usize> {
-    if reference.is_empty() || captured.is_empty() {
+    if reference.is_empty()
+        || captured.is_empty()
+        || reference.iter().any(|sample| !sample.is_finite())
+        || captured.iter().any(|sample| !sample.is_finite())
+    {
         return None;
     }
 
@@ -94,7 +105,7 @@ pub fn estimate_delay_samples(
         }
     }
 
-    best.map(|(delay, _)| delay)
+    best.and_then(|(delay, score)| if score > 0.0 { Some(delay) } else { None })
 }
 
 pub fn ppm_error(nominal_rate: f64, measured_rate: f64) -> Option<f64> {
@@ -115,6 +126,7 @@ pub fn assess_stream(stats: StreamStats) -> Vec<Finding> {
     if !stats.sample_rate.is_finite()
         || stats.sample_rate <= 0.0
         || stats.buffer_frames == 0
+        || stats.callback_count == 0
         || !stats.max_callback_ms.is_finite()
         || stats.max_callback_ms < 0.0
         || !stats.cpu_load.is_finite()
@@ -125,8 +137,12 @@ pub fn assess_stream(stats: StreamStats) -> Vec<Finding> {
             severity: Severity::Fail,
             title: "Invalid stream telemetry".into(),
             evidence: format!(
-                "sample_rate={}, buffer_frames={}, max_callback_ms={}, cpu_load={}",
-                stats.sample_rate, stats.buffer_frames, stats.max_callback_ms, stats.cpu_load
+                "sample_rate={}, buffer_frames={}, callback_count={}, max_callback_ms={}, cpu_load={}",
+                stats.sample_rate,
+                stats.buffer_frames,
+                stats.callback_count,
+                stats.max_callback_ms,
+                stats.cpu_load
             ),
             action: "Discard this measurement and verify the audio backend telemetry source.".into(),
         });
