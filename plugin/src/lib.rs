@@ -863,4 +863,15 @@ impl Vst3Plugin for AudioInterfaceDiag {
 }
 
 nih_export_clap!(AudioInterfaceDiag);
-nih_export_vst3!(AudioInterfaceDiag);
+// nih-plug's VST3 vtable macro ends in a semicolon in expression position, which newer
+// rustc releases reject (rust-lang/rust#79813). The code is upstream; allow it here.
+#[allow(
+    unknown_lints,
+    semicolon_in_expressions_from_macros,
+    semicolon_in_expressions_from_non_local_macros
+)]
+mod vst3_export {
+    use super::AudioInterfaceDiag;
+    use nih_plug::prelude::*;
+    nih_export_vst3!(AudioInterfaceDiag);
+}
