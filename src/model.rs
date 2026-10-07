@@ -11,6 +11,22 @@ pub enum Severity {
     Info,
     Warn,
     Fail,
+    /// Measurement could not be made (no data, invalid conditions). Never rendered as pass.
+    Unavailable,
+    NotRun,
+}
+
+impl Severity {
+    pub fn label(self) -> &'static str {
+        match self {
+            Severity::Pass => "PASS",
+            Severity::Info => "INFO",
+            Severity::Warn => "WARN",
+            Severity::Fail => "FAIL",
+            Severity::Unavailable => "UNAVAILABLE",
+            Severity::NotRun => "NOT-RUN",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
