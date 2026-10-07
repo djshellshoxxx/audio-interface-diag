@@ -30,9 +30,7 @@ pub fn sine(
     let amp = dbfs_to_linear(dbfs)?;
 
     Ok((0..frames)
-        .map(|i| {
-            (amp * (2.0 * PI * frequency_hz * i as f64 / sample_rate).sin()) as f32
-        })
+        .map(|i| (amp * (2.0 * PI * frequency_hz * i as f64 / sample_rate).sin()) as f32)
         .collect())
 }
 
@@ -92,4 +90,51 @@ pub fn gain_mismatch_db(a: &[f32], b: &[f32]) -> Option<f64> {
     } else {
         Some(a_rms - b_rms)
     }
+}
+
+/// Default generator level required by the product specification.
+pub const DEFAULT_GENERATOR_DBFS: f64 = -30.0;
+/// Levels above this require explicit acknowledgement inside Engineer mode.
+pub const ACK_REQUIRED_ABOVE_DBFS: f64 = -12.0;
+
+/// Returns the level that may actually be emitted. Levels above the acknowledgement threshold are
+/// rejected unless the user acknowledged them.
+pub fn validate_generator_level(dbfs: f64, acknowledged: bool) -> Result<f64, &'static str> {
+    if !dbfs.is_finite() || dbfs > 0.0 {
+        return Err("dBFS amplitude must be finite and <= 0");
+    }
+    if dbfs > ACK_REQUIRED_ABOVE_DBFS && !acknowledged {
+        return Err("levels above -12 dBFS require explicit acknowledgement");
+    }
+    Ok(dbfs)
+}
+
+/// Applies a linear fade-in and fade-out of `fade_frames` to a generated signal so output is
+/// ramped in/out as required by the signal-discipline rules.
+pub fn apply_fade(samples: &mut [f32], fade_frames: usize) {
+    let fade = fade_frames.min(samples.len() / 2);
+    if fade == 0 {
+        return;
+    }
+    let len = samples.len();
+    for i in 0..fade {
+        let gain = i as f32 / fade as f32;
+        samples[i] *= gain;
+        samples[len - 1 - i] *= gain;
+    }
+}
+
+/// Deterministic pseudorandom excitation (LCG white noise) used for latency measurement.
+pub fn noise_burst(dbfs: f64, frames: usize, seed: u32) -> Result<Vec<f32>, &'static str> {
+    if frames == 0 {
+        return Err("frame count must be greater than zero");
+    }
+    let amp = dbfs_to_linear(dbfs)? as f32;
+    let mut state = seed.max(1);
+    Ok((0..frames)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            ((state >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0) * amp
+        })
+        .collect())
 }

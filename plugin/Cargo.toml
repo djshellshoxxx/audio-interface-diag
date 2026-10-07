@@ -1,0 +1,20 @@
+[package]
+name = "aid_plugin"
+version = "0.0.1"
+edition = "2021"
+description = "Audio Interface Diag as CLAP, VST3 and standalone"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "aid_plugin"
+path = "src/main.rs"
+
+[dependencies]
+audio-interface-diag = { path = "..", features = ["native-audio"] }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", features = ["assert_process_allocs", "standalone"] }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683" }
+rtrb = "0.3"

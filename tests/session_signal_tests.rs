@@ -25,10 +25,7 @@ fn active_test_arms_only_in_engineer_mode() {
     let mut session = TestSession::new(Edition::Live, test);
     session.prepare().unwrap();
 
-    assert_eq!(
-        session.arm(),
-        Err("active tests require Engineer edition")
-    );
+    assert_eq!(session.arm(), Err("active tests require Engineer edition"));
 }
 
 #[test]
@@ -65,10 +62,7 @@ fn sine_rejects_frequency_at_or_above_nyquist() {
 
 #[test]
 fn clipping_counter_uses_absolute_level() {
-    assert_eq!(
-        clipped_sample_count(&[-1.0, -0.2, 0.2, 1.0], 0.99),
-        2
-    );
+    assert_eq!(clipped_sample_count(&[-1.0, -0.2, 0.2, 1.0], 0.99), 2);
 }
 
 #[test]

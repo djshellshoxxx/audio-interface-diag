@@ -180,8 +180,9 @@ pub fn assess_stream(stats: StreamStats) -> Vec<Finding> {
                 "{:.3} ms worst callback vs {:.3} ms buffer period",
                 stats.max_callback_ms, period_ms
             ),
-            action: "Increase buffer size or reduce real-time load before continuing critical work."
-                .into(),
+            action:
+                "Increase buffer size or reduce real-time load before continuing critical work."
+                    .into(),
         });
     } else if stats.max_callback_ms > period_ms * 0.8 {
         findings.push(Finding {
@@ -217,4 +218,144 @@ pub fn assess_stream(stats: StreamStats) -> Vec<Finding> {
     }
 
     findings
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DelayMeasurement {
+    pub delay_samples: usize,
+    /// Ratio of the correlation peak to the mean absolute correlation. Higher is more trustworthy.
+    pub confidence: f64,
+}
+
+/// Minimum peak-to-mean correlation ratio for a delay measurement to be considered valid.
+pub const MIN_DELAY_CONFIDENCE: f64 = 8.0;
+
+/// Cross-correlation delay estimate with a confidence figure. Returns `None` when the capture is
+/// invalid or no clear correlation peak exists (e.g. no loopback connected).
+pub fn measure_delay(
+    reference: &[f32],
+    captured: &[f32],
+    max_delay: usize,
+) -> Option<DelayMeasurement> {
+    if reference.is_empty()
+        || captured.len() < reference.len()
+        || reference.iter().any(|sample| !sample.is_finite())
+        || captured.iter().any(|sample| !sample.is_finite())
+    {
+        return None;
+    }
+
+    let limit = max_delay.min(captured.len() - reference.len());
+    let mut best = (0usize, 0.0f64);
+    let mut total = 0.0f64;
+
+    for delay in 0..=limit {
+        let score = reference
+            .iter()
+            .zip(&captured[delay..])
+            .map(|(r, c)| *r as f64 * *c as f64)
+            .sum::<f64>()
+            .abs();
+        total += score;
+        if score > best.1 {
+            best = (delay, score);
+        }
+    }
+
+    let mean = total / (limit + 1) as f64;
+    if best.1 <= 0.0 || mean <= 0.0 {
+        return None;
+    }
+
+    let confidence = best.1 / mean;
+    (confidence >= MIN_DELAY_CONFIDENCE).then_some(DelayMeasurement {
+        delay_samples: best.0,
+        confidence,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RepeatSummary {
+    pub median: f64,
+    pub min: f64,
+    pub max: f64,
+    pub spread: f64,
+    pub runs: usize,
+}
+
+/// Median/min/max/spread of repeated measurements (e.g. round-trip latency runs).
+pub fn summarize_runs(values: &[f64]) -> Option<RepeatSummary> {
+    if values.is_empty() || values.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let n = sorted.len();
+    let median = if n.is_multiple_of(2) {
+        (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+    } else {
+        sorted[n / 2]
+    };
+    Some(RepeatSummary {
+        median,
+        min: sorted[0],
+        max: sorted[n - 1],
+        spread: sorted[n - 1] - sorted[0],
+        runs: n,
+    })
+}
+
+/// Goertzel tone power for `frequency_hz`, returned as the tone's mean-square contribution.
+pub fn goertzel_power(samples: &[f32], frequency_hz: f64, sample_rate: f64) -> Option<f64> {
+    if samples.is_empty()
+        || !frequency_hz.is_finite()
+        || !sample_rate.is_finite()
+        || frequency_hz <= 0.0
+        || frequency_hz >= sample_rate / 2.0
+        || samples.iter().any(|s| !s.is_finite())
+    {
+        return None;
+    }
+    let coeff = 2.0 * (2.0 * std::f64::consts::PI * frequency_hz / sample_rate).cos();
+    let (mut s1, mut s2) = (0.0f64, 0.0f64);
+    for x in samples {
+        let s0 = *x as f64 + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    let magnitude_sq = s1 * s1 + s2 * s2 - coeff * s1 * s2;
+    let n = samples.len() as f64;
+    // |X| = A*N/2 for a sine of amplitude A; mean square of that sine is A^2/2.
+    Some(2.0 * magnitude_sq / (n * n))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HumReport {
+    /// 50 or 60
+    pub mains_hz: u32,
+    /// Power of the fundamental plus 2nd/3rd harmonic relative to total signal power, in dB.
+    pub family_db_rel_total: f64,
+}
+
+/// Observes the dominant mains-hum family (50 or 60 Hz plus 2nd/3rd harmonics). This is an
+/// observation, not a definitive diagnosis.
+pub fn analyze_hum(samples: &[f32], sample_rate: f64) -> Option<HumReport> {
+    let total =
+        samples.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / samples.len().max(1) as f64;
+    if total <= 0.0 {
+        return None;
+    }
+    let family = |base: f64| -> Option<f64> {
+        Some(
+            goertzel_power(samples, base, sample_rate)?
+                + goertzel_power(samples, base * 2.0, sample_rate)?
+                + goertzel_power(samples, base * 3.0, sample_rate)?,
+        )
+    };
+    let (p50, p60) = (family(50.0)?, family(60.0)?);
+    let (mains_hz, power) = if p50 >= p60 { (50, p50) } else { (60, p60) };
+    Some(HumReport {
+        mains_hz,
+        family_db_rel_total: 10.0 * (power.max(1e-30) / total).log10(),
+    })
 }
