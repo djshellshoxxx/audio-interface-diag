@@ -77,7 +77,7 @@ jobs:
           mkdir -p dist/stage
           cp -R "target/bundled/Audio Interface Diag.clap" dist/stage/
           cp -R "target/bundled/Audio Interface Diag.vst3" dist/stage/
-          cp -R "target/bundled/Audio Interface Diag" dist/stage/
+          cp -R "target/bundled/Audio Interface Diag.app" dist/stage/
           cp README.md dist/stage/
           tar -C dist/stage -czf "dist/AudioInterfaceDiag-${TAG}-macos-arm64-portable.tar.gz" .
           rm -rf dist/stage
