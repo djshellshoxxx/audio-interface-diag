@@ -63,8 +63,31 @@ jobs:
           name: windows
           path: dist/*
 
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace
+      - run: cargo xtask bundle aid_plugin --release
+      - name: Portable macOS bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/stage
+          cp -R "target/bundled/Audio Interface Diag.clap" dist/stage/
+          cp -R "target/bundled/Audio Interface Diag.vst3" dist/stage/
+          cp -R "target/bundled/Audio Interface Diag" dist/stage/
+          cp README.md dist/stage/
+          tar -C dist/stage -czf "dist/AudioInterfaceDiag-${TAG}-macos-arm64-portable.tar.gz" .
+          rm -rf dist/stage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.tar.gz
+
   publish:
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
