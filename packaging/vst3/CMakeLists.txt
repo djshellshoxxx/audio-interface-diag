@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(aid_vst3 VERSION 0.0.3 LANGUAGES C CXX)
+project(aid_vst3 VERSION 0.0.4 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 if(APPLE)
     enable_language(OBJC OBJCXX)
@@ -11,7 +11,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES OFF CACHE BOOL "Use only pinned local SDKs")
 set(CLAP_WRAPPER_COPY_AFTER_BUILD OFF CACHE BOOL "Never install into user directories")
 set(CLAP_WRAPPER_OUTPUT_NAME "Audio Interface Diag")
-set(CLAP_WRAPPER_BUNDLE_VERSION "0.0.3")
+set(CLAP_WRAPPER_BUNDLE_VERSION "0.0.4")
 set(CLAP_WRAPPER_BUILD_AAX OFF CACHE BOOL "No AAX SDK")
 set(CLAP_WRAPPER_BUILD_STANDALONE OFF CACHE BOOL "NIH supplies standalone")
 add_subdirectory("${AID_WRAPPER_ROOT}" wrapper EXCLUDE_FROM_ALL)
@@ -24,7 +24,7 @@ target_include_directories(aid_vst3 PRIVATE "${AID_WRAPPER_ROOT}/src")
 target_add_vst3_wrapper(TARGET aid_vst3 OUTPUT_NAME "Audio Interface Diag"
     SINGLE_PLUGIN_TUID "43444C417564696F4966616365446961"
     BUNDLE_IDENTIFIER "com.circuitdriftlabs.audio-interface-diag.vst3"
-    BUNDLE_VERSION "0.0.3" WINDOWS_FOLDER_VST3 TRUE)
+    BUNDLE_VERSION "0.0.4" WINDOWS_FOLDER_VST3 TRUE)
 
 # Replace only the two state call sites in a generated copy of the pinned MIT
 # translation unit. Upstream checkouts stay untouched; unexpected upstream source

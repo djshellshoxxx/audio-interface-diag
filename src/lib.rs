@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod backends;
 pub mod bench;
 pub mod burn_in;
 pub mod compensation;
@@ -10,8 +11,11 @@ pub mod planner;
 pub mod report;
 pub mod session;
 pub mod signal;
+pub mod spectrum;
+pub mod timing;
 
 pub use analysis::*;
+pub use backends::*;
 pub use bench::*;
 pub use burn_in::*;
 pub use compensation::*;
@@ -23,3 +27,5 @@ pub use planner::*;
 pub use report::*;
 pub use session::*;
 pub use signal::*;
+pub use spectrum::*;
+pub use timing::*;
