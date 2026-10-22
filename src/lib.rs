@@ -1,5 +1,7 @@
 pub mod analysis;
 pub mod bench;
+pub mod burn_in;
+pub mod compensation;
 pub mod model;
 pub mod native;
 pub mod planner;
@@ -9,6 +11,8 @@ pub mod signal;
 
 pub use analysis::*;
 pub use bench::*;
+pub use burn_in::*;
+pub use compensation::*;
 pub use model::*;
 pub use native::*;
 pub use planner::*;
