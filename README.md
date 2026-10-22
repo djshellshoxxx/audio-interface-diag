@@ -29,6 +29,11 @@ Safety: Live/DAW never generate signal or alter audio; leaving Engineer mode dis
 
 ## Build
 
+Offline sine-capture distortion measurement is available through
+`audio-interface-diag tone 48000 1000 capture.f32le`. It exports JSON with relative
+THD/THD+N and rejects invalid captures. See
+[capture format and measurement limits](docs/specs/11-offline-bench-analysis.md).
+
 ```bash
 cargo test --workspace
 cargo run -- live                          # CLI planner

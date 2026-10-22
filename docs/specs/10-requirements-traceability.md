@@ -29,7 +29,7 @@ Status key:
 | ENG-001 | buffer sweep | SPEC / NATIVE |
 | ENG-002 | physical RTL test | PLUGIN (5-run median/min/max/spread) |
 | ENG-003 | channel map | SPEC / NATIVE |
-| ENG-004 | noise/frequency/THD/crosstalk | PARTIAL (mains-hum observation) / NATIVE |
+| ENG-004 | noise/frequency/THD/crosstalk | PARTIAL (mains-hum observation; offline coherent sine THD/THD+N CLI) / NATIVE acquisition and remaining tests |
 | ENG-005 | drift and burn-in | PARTIAL / NATIVE |
 | HOST-001 | generic native device enumeration | PLUGIN (Devices screen, default host) |
 | HOST-002 | WASAPI-specific advanced telemetry | SPEC / NATIVE |
