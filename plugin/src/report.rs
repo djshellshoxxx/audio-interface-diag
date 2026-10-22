@@ -210,7 +210,7 @@ pub fn build_findings(shared: &Shared) -> Vec<Finding> {
         )
     });
 
-    let latency = shared.latency.lock().unwrap().clone();
+    let latency = shared.latency_results();
     findings.push(match summarize_runs(&latency.runs_samples) {
         Some(s) => {
             let ms = |samples: f64| samples / latency.sample_rate as f64 * 1000.0;
@@ -258,6 +258,48 @@ pub fn build_findings(shared: &Shared) -> Vec<Finding> {
             "Optional.",
         ),
     });
+
+    let host_compensation = shared.host_compensation_samples.load(Relaxed) as f64;
+    if host_compensation >= 0.0 {
+        let offset = audio_interface_diag::recording_offset(
+            &latency.runs_samples,
+            latency.sample_rate as f64,
+            sr,
+            host_compensation,
+        );
+        findings.push(match offset {
+            Ok(offset) => finding("daw.recording_offset", Severity::Info,
+                "Recording offset after entered compensation",
+                format!("Residual {:+.2} samples ({:+.4} ms) at {sr} Hz after {host_compensation:.2} samples of user-entered host compensation. Positive = late; negative = early. Same loopback path assumed.", offset.residual_samples, offset.residual_ms),
+                "Confirm the DAW's offset sign convention and validate with a new recording. AID does not change DAW settings."),
+            Err(reason) => finding("daw.recording_offset", Severity::Unavailable,
+                "Recording offset unavailable", reason.into(), "Repeat five stable loopback runs at the current sample rate."),
+        });
+    }
+
+    if host_compensation < 0.0 {
+        findings.push(finding(
+            "daw.recording_offset",
+            Severity::NotRun,
+            "Recording offset not evaluated",
+            "Host compensation has not been entered for this context.".into(),
+            "Enter compensation on the DAW screen after measuring this loopback path.",
+        ));
+    }
+
+    if let Some(run) = shared.poll_burn_in() {
+        use audio_interface_diag::BurnInState;
+        let severity = match run.state {
+            BurnInState::Complete if run.faults == 0 => Severity::Pass,
+            BurnInState::Complete => Severity::Fail,
+            BurnInState::Running => Severity::Info,
+            BurnInState::Aborted => Severity::NotRun,
+            BurnInState::Unavailable => Severity::Unavailable,
+        };
+        findings.push(finding("engineer.host_burn_in", severity, "Passive host-path burn-in",
+            format!("{:?}: {:.1}/{:.1} s, {} callbacks, {} fault-counter increments. {}. Includes clipping/signal-loss and inferred callback timing faults; does not qualify driver xruns, clock drift or device hardware.", run.state, run.elapsed_secs, run.target_secs, run.callbacks, run.faults, run.reason),
+            "Retain this report with device, driver, gain and routing notes; repeat physical qualification separately."));
+    }
 
     findings
 }
@@ -444,6 +486,41 @@ pub fn export(shared: &Shared, mode: Mode, notes: &str) -> std::io::Result<PathB
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compensation_and_burn_in_export_real_results_and_reject_reset() {
+        let (_, consumer) = rtrb::RingBuffer::new(4);
+        let shared = Shared::new(consumer);
+        shared.sample_rate.store(48_000.0, Relaxed);
+        shared.callbacks.store(1, Relaxed);
+        shared.host_compensation_samples.store(400.0, Relaxed);
+        {
+            let mut latency = shared.latency.lock().unwrap();
+            latency.sample_rate = 48_000.0;
+            latency.runs_samples = vec![480.0; 5];
+        }
+        assert!(build_findings(&shared)
+            .iter()
+            .any(|f| f.id == "daw.recording_offset"
+                && f.severity == Severity::Info
+                && f.evidence.contains("+80.00 samples")));
+        shared.start_burn_in(1.0).unwrap();
+        shared.burn_in.lock().unwrap().as_mut().unwrap().1 =
+            std::time::Instant::now() - std::time::Duration::from_millis(1100);
+        shared.callbacks.store(2, Relaxed);
+        assert!(build_findings(&shared)
+            .iter()
+            .any(|f| f.id == "engineer.host_burn_in" && f.severity == Severity::Pass));
+        shared.start_burn_in(10.0).unwrap();
+        shared.disarm_output();
+        let findings = build_findings(&shared);
+        assert!(findings
+            .iter()
+            .any(|f| f.id == "engineer.host_burn_in" && f.severity == Severity::Unavailable));
+        assert!(findings
+            .iter()
+            .any(|f| f.id == "daw.recording_offset" && f.severity == Severity::NotRun));
+    }
 
     #[test]
     fn timestamp_is_correct() {

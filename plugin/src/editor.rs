@@ -107,7 +107,11 @@ struct Snapshot {
     exported: bool,
 }
 
+type DeviceScanResult = Result<Vec<NativeDeviceSummary>, String>;
+type DeviceScanReceiver = std::sync::Mutex<std::sync::mpsc::Receiver<DeviceScanResult>>;
+
 struct GuiState {
+    burn_in_duration: f64,
     tab: Tab,
     stage_view: bool,
     confirm_arm: bool,
@@ -119,11 +123,13 @@ struct GuiState {
     exported: bool,
     hum_ever: bool,
     markers: u32,
-    devices: Option<Result<Vec<NativeDeviceSummary>, String>>,
+    devices: Option<DeviceScanResult>,
+    device_scan: Option<DeviceScanReceiver>,
 }
 
 pub fn create(params: Arc<AidParams>, shared: Arc<Shared>) -> Option<Box<dyn Editor>> {
     let state = GuiState {
+        burn_in_duration: 600.0,
         tab: Tab::Live,
         stage_view: false,
         confirm_arm: false,
@@ -136,6 +142,7 @@ pub fn create(params: Arc<AidParams>, shared: Arc<Shared>) -> Option<Box<dyn Edi
         hum_ever: false,
         markers: 0,
         devices: None,
+        device_scan: None,
     };
     create_egui_editor(
         params.editor_state.clone(),
@@ -190,7 +197,7 @@ fn snapshot(shared: &Shared, state: &mut GuiState) -> Snapshot {
     };
     state.best_streak = state.best_streak.max(streak);
     state.hum_ever |= shared.hum_present.load(Relaxed);
-    let latency = shared.latency.lock().unwrap().clone();
+    let latency = shared.latency_results();
     let summary = summarize_runs(&latency.runs_samples);
     Snapshot {
         callbacks,
@@ -702,6 +709,26 @@ fn daw_screen(
     });
     ui.separator();
     ui.heading("Dropout markers (match against DAW logs)");
+    ui.collapsing("Recording compensation (after Engineer loopback test)", |ui| {
+        ui.label("Enter the compensation already applied by the host for the same round-trip path. AID never changes DAW settings.");
+        let entered = shared.host_compensation_samples.load(Relaxed);
+        let mut supplied = entered >= 0.0;
+        if ui.checkbox(&mut supplied, "Host compensation is known").changed() {
+            shared.host_compensation_samples.store(if supplied { 0.0 } else { -1.0 }, Relaxed);
+        }
+        if supplied {
+            let mut samples = entered.max(0.0);
+            if ui.add(egui::DragValue::new(&mut samples).range(0.0..=1_000_000.0).suffix(" samples")).changed() {
+                shared.host_compensation_samples.store(samples, Relaxed);
+            }
+            let latency = shared.latency_results();
+            match audio_interface_diag::recording_offset(&latency.runs_samples, latency.sample_rate as f64,
+                shared.sample_rate.load(Relaxed) as f64, samples as f64) {
+                Ok(offset) => { ui.label(format!("Residual {:+.2} samples / {:+.4} ms (positive = late; negative = early). Check your DAW's sign convention.", offset.residual_samples, offset.residual_ms)); }
+                Err(reason) => { ui.label(format!("Unavailable: {reason}")); }
+            }
+        }
+    });
     timeline(ui, events, 160.0);
 }
 
@@ -710,6 +737,7 @@ fn catalog_status(kind: TestKind) -> (&'static str, Color32) {
     match kind {
         RoundTripLatency | Polarity | DcOffset | NoiseFloor => ("available", GREEN),
         DeviceInventory | DriverCapability => ("host context + Devices scan", AMBER),
+        BurnIn => ("passive host-path observation", GREEN),
         _ => ("needs native backend (not in this build)", GREY),
     }
 }
@@ -740,6 +768,25 @@ fn engineer_screen(
         ui.separator();
         ui.heading("Cabling");
         ui.label("Output L → cable → Input 1 (or the sidechain return). Start with the interface output and input gain low. 🔌 = loopback cable required.");
+        ui.separator();
+        ui.heading("Passive host-path burn-in");
+        ui.label("Observes callbacks and fault counters; never starts output or changes device settings. Hardware/driver qualification is separate.");
+        ui.horizontal(|ui| {
+            for (label, secs) in [("10 min", 600.0), ("1 h", 3600.0), ("8 h", 28_800.0)] {
+                if ui.button(label).clicked() { state.burn_in_duration = secs; }
+            }
+        });
+        ui.add(egui::DragValue::new(&mut state.burn_in_duration).range(1.0..=604_800.0).suffix(" seconds"));
+        let run = shared.poll_burn_in();
+        let running = run.as_ref().is_some_and(|r| r.state == audio_interface_diag::BurnInState::Running);
+        if ui.add_enabled(!running && !armed, egui::Button::new("Start passive burn-in")).clicked() {
+            if let Err(reason) = shared.start_burn_in(state.burn_in_duration) { state.status = reason.into(); }
+        }
+        if running && ui.button("Stop burn-in").clicked() { shared.stop_burn_in(); }
+        if let Some(run) = run {
+            ui.label(format!("{:?}: {:.1}/{:.1} s · {} callbacks · {} fault increments", run.state, run.elapsed_secs, run.target_secs, run.callbacks, run.faults));
+            ui.label(run.reason);
+        }
 
         let ui = &mut cols[1];
         ui.heading("Generator");
@@ -829,7 +876,7 @@ fn engineer_screen(
             ui.label(RichText::new(format!("Measuring… {remaining} runs queued")).color(ACCENT));
         }
         ui.label(format!("Return level {} dBFS RMS", fmt_db(shared.return_rms_db.load(Relaxed))));
-        let latency = shared.latency.lock().unwrap().clone();
+        let latency = shared.latency_results();
         match summarize_runs(&latency.runs_samples) {
             Some(s) => {
                 let ms = |v: f64| v / latency.sample_rate as f64 * 1000.0;
@@ -850,6 +897,19 @@ fn engineer_screen(
 }
 
 fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
+    if let Some(receiver) = &mut state.device_scan {
+        match receiver.get_mut().unwrap().try_recv() {
+            Ok(result) => {
+                state.devices = Some(result);
+                state.device_scan = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                state.devices = Some(Err("Device scan worker stopped unexpectedly".into()));
+                state.device_scan = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+    }
     ui.heading("Current audio path (host-provided)");
     egui::Grid::new("ctx")
         .num_columns(2)
@@ -906,8 +966,29 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
     ui.separator();
     ui.heading("Native device inventory");
     ui.label("Lists devices on this computer's default audio host. Runs only when you click; it does not open streams or change settings.");
-    if ui.button("Scan devices").clicked() {
-        state.devices = Some(enumerate_native_devices());
+    if ui
+        .add_enabled(
+            state.device_scan.is_none(),
+            egui::Button::new("Scan devices"),
+        )
+        .clicked()
+    {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        match std::thread::Builder::new()
+            .name("aid-device-scan".into())
+            .spawn(move || {
+                let _ = sender.send(enumerate_native_devices());
+            }) {
+            Ok(_) => {
+                state.device_scan = Some(std::sync::Mutex::new(receiver));
+            }
+            Err(error) => {
+                state.devices = Some(Err(error.to_string()));
+            }
+        }
+    }
+    if state.device_scan.is_some() {
+        ui.label("Scanning advertised capabilities…");
     }
     match &state.devices {
         Some(Ok(list)) if list.is_empty() => {
@@ -934,6 +1015,24 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
                         ui.end_row();
                     }
                 });
+            for (index, device) in list.iter().enumerate() {
+                egui::CollapsingHeader::new(format!("{} — advertised formats", device.name))
+                    .id_salt(("native-formats", index)).show(ui, |ui| {
+                    ui.label("Advertised by the driver; stream-open success and stability have not been tested.");
+                    for (direction, formats) in [("Input", &device.input_formats), ("Output", &device.output_formats)] {
+                        ui.strong(direction);
+                        match formats {
+                            Ok(formats) if formats.is_empty() => { ui.label("No advertised formats."); }
+                            Ok(formats) => for format in formats {
+                                let buffer = format.buffer_frames.map(|(min, max)| format!("{min}–{max} frames"))
+                                    .unwrap_or_else(|| "buffer range unavailable".into());
+                                ui.label(format!("{} channels · {}–{} Hz · {} · {}", format.channels, format.min_rate, format.max_rate, format.sample_format, buffer));
+                            },
+                            Err(error) => { ui.label(format!("Unavailable: {error}")); }
+                        }
+                    }
+                });
+            }
         }
         Some(Err(e)) => {
             ui.label(RichText::new(format!("Unavailable: {e}")).color(AMBER));

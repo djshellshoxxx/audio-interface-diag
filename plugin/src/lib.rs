@@ -251,6 +251,7 @@ impl AudioInterfaceDiag {
     }
 
     fn reset_session(&mut self, now: Instant) {
+        self.shared.disarm_output();
         self.shared.zero_counters();
         self.epoch = now;
         self.last_call = None;
@@ -379,6 +380,12 @@ impl AudioInterfaceDiag {
         let submitted = match self.shared.latency_capture.try_lock() {
             Ok(mut capture) if capture.len() == self.latency_capture.len() => {
                 std::mem::swap(&mut *capture, &mut self.latency_capture);
+                self.shared
+                    .latency_capture_epoch
+                    .store(self.shared.context_epoch.load(Relaxed), Relaxed);
+                self.shared
+                    .latency_capture_rate
+                    .store(self.sample_rate, Relaxed);
                 true
             }
             _ => false,
@@ -394,6 +401,7 @@ impl AudioInterfaceDiag {
 }
 
 fn run_hum_task(shared: &Shared) {
+    shared.poll_burn_in();
     let buffer = shared.hum_buffer.lock().unwrap();
     let sr = shared.hum_sample_rate.load(Relaxed) as f64;
     let rms = audio_interface_diag::dbfs_rms(&buffer).unwrap_or(f64::NEG_INFINITY);
@@ -430,10 +438,19 @@ fn run_latency_task(shared: &Shared) {
     let reference = shared.latency_reference.lock().unwrap();
     let capture = shared.latency_capture.lock().unwrap();
     let max_delay = shared.latency_max_delay.load(Relaxed) as usize;
+    let epoch = shared.latency_capture_epoch.load(Relaxed);
+    let sr = shared.latency_capture_rate.load(Relaxed);
     let measured = measure_delay(&reference, &capture, max_delay);
     drop((reference, capture));
-    let sr = shared.sample_rate.load(Relaxed);
+    if epoch != shared.context_epoch.load(Relaxed) {
+        shared.latency_busy.store(false, Relaxed);
+        return;
+    }
     let mut results = shared.latency.lock().unwrap();
+    if results.epoch != epoch {
+        *results = Default::default();
+        results.epoch = epoch;
+    }
     results.sample_rate = sr;
     match measured {
         Some(m) => {
@@ -518,6 +535,7 @@ impl Plugin for AudioInterfaceDiag {
         buffer_config: &BufferConfig,
         context: &mut impl InitContext<Self>,
     ) -> bool {
+        self.shared.disarm_output();
         let sr = buffer_config.sample_rate;
         let first = self.shared.sample_rate.load(Relaxed) == 0.0;
         let changed = self.shared.sample_rate.load(Relaxed) != sr
@@ -575,6 +593,7 @@ impl Plugin for AudioInterfaceDiag {
     }
 
     fn reset(&mut self) {
+        self.shared.disarm_output();
         // Re-activation: discard timing history so the gap is not reported as a dropout.
         self.last_call = None;
         self.latency_state = LatencyState::Idle;
@@ -585,6 +604,9 @@ impl Plugin for AudioInterfaceDiag {
     }
 
     fn deactivate(&mut self) {
+        self.shared.disarm_output();
+        self.gen_gain = 0.0;
+        self.latency_state = LatencyState::Idle;
         self.last_call = None;
         self.shared.generating.store(false, Relaxed);
     }
@@ -874,4 +896,75 @@ mod vst3_export {
     use super::AudioInterfaceDiag;
     use nih_plug::prelude::*;
     nih_export_vst3!(AudioInterfaceDiag);
+
+    #[cfg(test)]
+    mod lifecycle_tests {
+        use super::*;
+        use std::sync::atomic::Ordering::Relaxed;
+
+        #[test]
+        fn event_flood_is_bounded_and_reports_loss() {
+            let mut plugin = AudioInterfaceDiag::default();
+            for index in 0..50_000 {
+                plugin.emit(index as f64, crate::shared::EventKind::Dropout, 1.0);
+                if index % 10_000 == 9_999 {
+                    plugin.shared.drain_events();
+                }
+            }
+            assert!(plugin.shared.events_dropped.load(Relaxed) > 0);
+            let events = plugin.shared.events();
+            assert_eq!(events.len(), crate::shared::EVENT_LOG_CAPACITY);
+            assert!(events.windows(2).all(|pair| pair[0].t <= pair[1].t));
+        }
+
+        #[test]
+        fn old_latency_results_and_pending_capture_are_invalid_after_reset() {
+            let mut plugin = AudioInterfaceDiag::default();
+            let epoch = plugin.shared.context_epoch.load(Relaxed);
+            {
+                let mut results = plugin.shared.latency.lock().unwrap();
+                results.epoch = epoch;
+                results.sample_rate = 48_000.0;
+                results.runs_samples = vec![480.0; 5];
+            }
+            assert_eq!(plugin.shared.latency_results().runs_samples.len(), 5);
+            plugin.shared.latency_capture_epoch.store(epoch, Relaxed);
+            plugin.shared.latency_busy.store(true, Relaxed);
+            plugin.reset();
+            assert!(plugin.shared.latency_results().runs_samples.is_empty());
+            crate::run_latency_task(&plugin.shared);
+            assert!(!plugin.shared.latency_busy.load(Relaxed));
+            assert!(plugin.shared.latency_results().runs_samples.is_empty());
+        }
+
+        #[test]
+        fn host_lifecycle_requires_fresh_arming() {
+            let mut plugin = AudioInterfaceDiag::default();
+            for reset in [true, false] {
+                plugin.shared.armed.store(true, Relaxed);
+                plugin.shared.high_level_ack.store(true, Relaxed);
+                plugin.shared.generating.store(true, Relaxed);
+                plugin.shared.latency_remaining.store(5, Relaxed);
+                if reset {
+                    plugin.reset();
+                } else {
+                    plugin.deactivate();
+                }
+                assert!(!plugin.shared.armed.load(Relaxed));
+                assert!(!plugin.shared.generating.load(Relaxed));
+                assert!(!plugin.shared.high_level_ack.load(Relaxed));
+                assert_eq!(plugin.shared.latency_remaining.load(Relaxed), 0);
+            }
+        }
+
+        #[test]
+        fn clearing_session_stops_output() {
+            let plugin = AudioInterfaceDiag::default();
+            plugin.shared.armed.store(true, Relaxed);
+            plugin.shared.latency_remaining.store(5, Relaxed);
+            plugin.shared.clear_session();
+            assert!(!plugin.shared.armed.load(Relaxed));
+            assert_eq!(plugin.shared.latency_remaining.load(Relaxed), 0);
+        }
+    }
 }

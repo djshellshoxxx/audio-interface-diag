@@ -3,18 +3,19 @@ name: release
 on:
   push:
     tags: ["v*"]
+    branches: ["release/v0.0.2-beta"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.0.1-beta)"
+        description: "Release tag (e.g. v0.0.2-beta)"
         required: true
-        default: "v0.0.1-beta"
+        default: "v0.0.2-beta"
 
 permissions:
   contents: write
 
 env:
-  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  TAG: ${{ github.event.inputs.tag || (github.ref_type == 'branch' && 'v0.0.2-beta') || github.ref_name }}
 
 jobs:
   linux:
@@ -24,8 +25,9 @@ jobs:
       - name: Install audio/GUI development headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libjack-jackd2-dev libgl-dev libx11-xcb-dev libxcursor-dev libxcb-icccm4-dev libxcb-dri2-0-dev libxkbcommon-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
       - run: cargo xtask bundle aid_plugin --release
+      - run: cargo build -p audio-interface-diag --release --locked
       - run: packaging/linux/package.sh "$TAG"
       - uses: actions/upload-artifact@v4
         with:
@@ -37,8 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
       - run: cargo xtask bundle aid_plugin --release
+      - run: cargo build -p audio-interface-diag --release --locked
       - name: Portable zip
         shell: pwsh
         run: |
@@ -47,6 +50,7 @@ jobs:
           Copy-Item "target/bundled/Audio Interface Diag.exe" "dist/$name/"
           Copy-Item "target/bundled/Audio Interface Diag.clap" "dist/$name/"
           Copy-Item -Recurse "target/bundled/Audio Interface Diag.vst3" "dist/$name/"
+          Copy-Item "target/release/audio-interface-diag.exe" "dist/$name/aid-analyze.exe"
           Copy-Item "README.md" "dist/$name/"
           Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
           Remove-Item -Recurse "dist/$name"
@@ -56,7 +60,7 @@ jobs:
           if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
           $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
           if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-          & $iscc "/DAppVersion=$($env:TAG.TrimStart('v'))" "/DSrcDir=$PWD\target\bundled" "/DOutDir=$PWD\dist" packaging\windows\installer.iss
+          & $iscc "/DAppVersion=$($env:TAG.TrimStart('v'))" "/DSrcDir=$PWD\target\bundled" "/DAnalyzerPath=$PWD\target\release\audio-interface-diag.exe" "/DOutDir=$PWD\dist" packaging\windows\installer.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
@@ -68,8 +72,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
       - run: cargo xtask bundle aid_plugin --release
+      - run: cargo build -p audio-interface-diag --release --locked
       - name: Portable macOS bundle
         shell: bash
         run: |
@@ -78,6 +83,7 @@ jobs:
           cp -R "target/bundled/Audio Interface Diag.clap" dist/stage/
           cp -R "target/bundled/Audio Interface Diag.vst3" dist/stage/
           cp -R "target/bundled/Audio Interface Diag.app" dist/stage/
+          cp target/release/audio-interface-diag dist/stage/aid-analyze
           cp README.md dist/stage/
           tar -C dist/stage -czf "dist/AudioInterfaceDiag-${TAG}-macos-arm64-portable.tar.gz" .
           rm -rf dist/stage
@@ -101,5 +107,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Audio Interface Diag ${{ env.TAG }}
           prerelease: true
-          body_path: docs/release-notes-v0.0.1-beta.md
+          draft: ${{ github.ref_type == 'branch' }}
+          target_commitish: ${{ github.sha }}
+          body_path: docs/release-notes-${{ env.TAG }}.md
           files: dist/*
