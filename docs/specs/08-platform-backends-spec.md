@@ -39,3 +39,15 @@ Each backend advertises:
 - device_events
 
 The test planner uses flags to disable impossible workflows before execution.
+
+## Current Linux passive adapter
+
+The 0.0.4 development branch adds read-only ALSA PCM `hw_params`/`status`
+observation via `aid-analyze alsa` and the Devices scan. It labels current kernel
+format/state/delay separately from CPAL advertised formats. Reads and traversal
+are bounded, process IDs are excluded, and missing/closed/malformed snapshots
+remain unavailable. Procfs files are sampled separately and may change during a
+scan; card paths/labels are not globally stable endpoint identities. This adapter
+does not open streams, control devices, observe ASIO or establish JACK/PipeWire
+routing. Stable IDs, device-event subscriptions and remaining native backends
+remain required work.

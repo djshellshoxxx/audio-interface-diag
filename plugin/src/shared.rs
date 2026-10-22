@@ -97,6 +97,25 @@ impl AtomicF64 {
     }
 }
 
+#[derive(Clone)]
+pub struct SignalPlots {
+    pub epoch: u64,
+    pub captured: Instant,
+    pub sample_rate: f64,
+    pub scope_seconds: f64,
+    pub scope: Vec<audio_interface_diag::ScopeSpan>,
+    pub spectrum: audio_interface_diag::Spectrum,
+}
+
+impl SignalPlots {
+    pub fn current(&self, epoch: u64, now: Instant) -> bool {
+        self.epoch == epoch
+            && now
+                .checked_duration_since(self.captured)
+                .is_some_and(|age| age <= std::time::Duration::from_secs(3))
+    }
+}
+
 pub struct Shared {
     pub burn_in: Mutex<Option<(BurnIn, Instant)>>,
     pub context_epoch: AtomicU64,
@@ -132,6 +151,7 @@ pub struct Shared {
     pub max_callback_ms: AtomicF32,
     pub max_load: AtomicF32,
     pub avg_load: AtomicF32,
+    pub timing_bins: [AtomicU64; audio_interface_diag::CALLBACK_TIMING_BINS],
     pub had_signal: AtomicBool,
 
     // Hum observation (background task)
@@ -141,6 +161,10 @@ pub struct Shared {
     pub hum_present: AtomicBool,
     pub hum_buffer: Mutex<Vec<f32>>,
     pub hum_sample_rate: AtomicF32,
+    pub hum_capture_epoch: AtomicU64,
+    pub plot_clock: Instant,
+    pub hum_capture_ticks: AtomicU64,
+    pub plots: Mutex<Option<SignalPlots>>,
 
     // Generator / Engineer safety state. Never persisted so generation can't auto-resume.
     pub armed: AtomicBool,
@@ -201,6 +225,7 @@ impl Shared {
             max_callback_ms: AtomicF32::new(0.0),
             max_load: AtomicF32::new(0.0),
             avg_load: AtomicF32::new(0.0),
+            timing_bins: std::array::from_fn(|_| AtomicU64::new(0)),
             had_signal: AtomicBool::new(false),
             hum_hz: AtomicU32::new(0),
             hum_db_rel: AtomicF32::new(MINUS_INF_DB),
@@ -208,6 +233,10 @@ impl Shared {
             hum_present: AtomicBool::new(false),
             hum_buffer: Mutex::new(Vec::new()),
             hum_sample_rate: AtomicF32::new(0.0),
+            hum_capture_epoch: AtomicU64::new(0),
+            plot_clock: Instant::now(),
+            hum_capture_ticks: AtomicU64::new(0),
+            plots: Mutex::new(None),
             armed: AtomicBool::new(false),
             high_level_ack: AtomicBool::new(false),
             generating: AtomicBool::new(false),
@@ -333,7 +362,14 @@ impl Shared {
     }
 
     /// Resets all session counters. Safe from any thread (atomics only).
+    pub fn callback_timing(&self) -> [u64; audio_interface_diag::CALLBACK_TIMING_BINS] {
+        std::array::from_fn(|i| self.timing_bins[i].load(Relaxed))
+    }
+
     pub fn zero_counters(&self) {
+        for bin in &self.timing_bins {
+            bin.store(0, Relaxed);
+        }
         for c in [
             &self.callbacks,
             &self.dropouts,
@@ -354,5 +390,25 @@ impl Shared {
         self.hum_present.store(false, Relaxed);
         self.last_problem_secs.store(0.0);
         self.session_secs.store(0.0);
+    }
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::*;
+
+    #[test]
+    fn clearing_session_discards_callback_timing_distribution() {
+        let (_, consumer) = rtrb::RingBuffer::new(4);
+        let shared = Shared::new(consumer);
+        let bin = audio_interface_diag::callback_timing_bucket(1.0).unwrap();
+        shared.timing_bins[bin].store(100, Relaxed);
+        let before = shared.callback_timing();
+        assert!(audio_interface_diag::timing_percentile_upper_ms(&before, 0.95).is_some());
+        shared.clear_session();
+        assert!(
+            audio_interface_diag::timing_percentile_upper_ms(&shared.callback_timing(), 0.95)
+                .is_none()
+        );
     }
 }
