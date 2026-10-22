@@ -47,6 +47,8 @@ jobs:
       matrix:
         runner: [windows-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
+    env:
+      RUSTFLAGS: ${{ startsWith(matrix.runner, 'windows') && '-C target-feature=+crt-static' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

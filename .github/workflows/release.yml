@@ -43,6 +43,8 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    env:
+      RUSTFLAGS: "-C target-feature=+crt-static"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -52,6 +54,18 @@ jobs:
       - run: python packaging/third_party_notices.py
       - run: python packaging/validate_vst3.py
       - run: cargo build -p audio-interface-diag --release --features native-audio --locked
+      - name: Verify clean-machine runtime imports
+        shell: pwsh
+        run: |
+          $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Sort-Object LastWriteTime | Select-Object -Last 1
+          if (-not $dumpbin) { throw "MSVC import inspection tool is unavailable" }
+          $binaries = @("target/bundled/Audio Interface Diag.exe", "target/bundled/Audio Interface Diag.clap", "target/bundled/Audio Interface Diag.vst3/Contents/x86_64-win/Audio Interface Diag.vst3", "target/release/audio-interface-diag.exe")
+          foreach ($binary in $binaries) {
+            $imports = & $dumpbin.FullName /DEPENDENTS $binary
+            if ($LASTEXITCODE -ne 0) { throw "Import inspection failed: $binary" }
+            $imports
+            if ($imports -match '(?i)(VCRUNTIME|MSVCP[0-9]|CONCRT)[^ ]*\.dll') { throw "Unexpected Visual C++ runtime dependency: $binary" }
+          }
       - name: Portable zip
         shell: pwsh
         run: |
