@@ -15,7 +15,7 @@ AID ships as a **CLAP plugin, VST3 plugin and standalone application** (Windows 
 | Live | Stage view health (text + colour, never "healthy" without data), meters with peak hold, suspected dropouts, clipping, signal loss, NaN/Inf, AID callback margin, event timeline, markers, snapshot export |
 | DAW | Correlation/polarity, DC offset, crest factor, mains hum, routing assistant, dropout markers for matching DAW logs |
 | Engineer | Test catalog from the shared planner, armed generator (sine/pink/white/impulse, -30 dBFS default, >-12 dBFS acknowledgement, ramps, STOP), round-trip latency (5 runs, median/min/max/spread, confidence-gated) |
-| Devices | Host-provided format context and on-demand native device inventory |
+| Devices | Host-provided format context and background native inventory with advertised input/output channel, rate, sample-format and buffer ranges |
 | Report | Findings via the shared rule engine, technician notes, copy to clipboard, export TXT/JSON/CSV + events CSV to `Documents/AudioInterfaceDiag` |
 | Badges | Glitch-free streak and achievements |
 

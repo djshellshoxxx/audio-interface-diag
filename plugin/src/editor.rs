@@ -107,6 +107,9 @@ struct Snapshot {
     exported: bool,
 }
 
+type DeviceScanResult = Result<Vec<NativeDeviceSummary>, String>;
+type DeviceScanReceiver = std::sync::Mutex<std::sync::mpsc::Receiver<DeviceScanResult>>;
+
 struct GuiState {
     tab: Tab,
     stage_view: bool,
@@ -119,7 +122,8 @@ struct GuiState {
     exported: bool,
     hum_ever: bool,
     markers: u32,
-    devices: Option<Result<Vec<NativeDeviceSummary>, String>>,
+    devices: Option<DeviceScanResult>,
+    device_scan: Option<DeviceScanReceiver>,
 }
 
 pub fn create(params: Arc<AidParams>, shared: Arc<Shared>) -> Option<Box<dyn Editor>> {
@@ -136,6 +140,7 @@ pub fn create(params: Arc<AidParams>, shared: Arc<Shared>) -> Option<Box<dyn Edi
         hum_ever: false,
         markers: 0,
         devices: None,
+        device_scan: None,
     };
     create_egui_editor(
         params.editor_state.clone(),
@@ -850,6 +855,19 @@ fn engineer_screen(
 }
 
 fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
+    if let Some(receiver) = &mut state.device_scan {
+        match receiver.get_mut().unwrap().try_recv() {
+            Ok(result) => {
+                state.devices = Some(result);
+                state.device_scan = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                state.devices = Some(Err("Device scan worker stopped unexpectedly".into()));
+                state.device_scan = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+    }
     ui.heading("Current audio path (host-provided)");
     egui::Grid::new("ctx")
         .num_columns(2)
@@ -906,8 +924,29 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
     ui.separator();
     ui.heading("Native device inventory");
     ui.label("Lists devices on this computer's default audio host. Runs only when you click; it does not open streams or change settings.");
-    if ui.button("Scan devices").clicked() {
-        state.devices = Some(enumerate_native_devices());
+    if ui
+        .add_enabled(
+            state.device_scan.is_none(),
+            egui::Button::new("Scan devices"),
+        )
+        .clicked()
+    {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        match std::thread::Builder::new()
+            .name("aid-device-scan".into())
+            .spawn(move || {
+                let _ = sender.send(enumerate_native_devices());
+            }) {
+            Ok(_) => {
+                state.device_scan = Some(std::sync::Mutex::new(receiver));
+            }
+            Err(error) => {
+                state.devices = Some(Err(error.to_string()));
+            }
+        }
+    }
+    if state.device_scan.is_some() {
+        ui.label("Scanning advertised capabilities…");
     }
     match &state.devices {
         Some(Ok(list)) if list.is_empty() => {
@@ -934,6 +973,24 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
                         ui.end_row();
                     }
                 });
+            for (index, device) in list.iter().enumerate() {
+                egui::CollapsingHeader::new(format!("{} — advertised formats", device.name))
+                    .id_salt(("native-formats", index)).show(ui, |ui| {
+                    ui.label("Advertised by the driver; stream-open success and stability have not been tested.");
+                    for (direction, formats) in [("Input", &device.input_formats), ("Output", &device.output_formats)] {
+                        ui.strong(direction);
+                        match formats {
+                            Ok(formats) if formats.is_empty() => { ui.label("No advertised formats."); }
+                            Ok(formats) => for format in formats {
+                                let buffer = format.buffer_frames.map(|(min, max)| format!("{min}–{max} frames"))
+                                    .unwrap_or_else(|| "buffer range unavailable".into());
+                                ui.label(format!("{} channels · {}–{} Hz · {} · {}", format.channels, format.min_rate, format.max_rate, format.sample_format, buffer));
+                            },
+                            Err(error) => { ui.label(format!("Unavailable: {error}")); }
+                        }
+                    }
+                });
+            }
         }
         Some(Err(e)) => {
             ui.label(RichText::new(format!("Unavailable: {e}")).color(AMBER));
