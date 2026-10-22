@@ -5,7 +5,8 @@ generating output. It supplements the plugin's live measurements.
 
 ## Distortion
 
-Command: `audio-interface-diag tone <sample-rate> <frequency> <mono.f32le>`.
+Source command: `audio-interface-diag tone <sample-rate> <frequency> <mono.f32le>`.
+Downloaded packages name the CLI executable `aid-analyze` (`aid-analyze.exe` on Windows).
 Input is headerless, mono IEEE float32 little-endian, at most 32 MiB. Export a
 steady section from a recorded hardware loopback. WAV headers and interleaved
 stereo must be removed by the recording/export application first.

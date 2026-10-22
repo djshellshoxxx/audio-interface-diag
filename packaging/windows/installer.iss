@@ -10,6 +10,10 @@
   #define OutDir "..\..\dist"
 #endif
 
+#ifndef AnalyzerPath
+  #define AnalyzerPath "..\..\target\release\audio-interface-diag.exe"
+#endif
+
 [Setup]
 AppId={{6C1D7A52-2B0E-4C8E-9A61-A1D000000001}
 AppName=Audio Interface Diag
@@ -36,6 +40,7 @@ Name: "clap"; Description: "CLAP plugin"; Types: full
 Name: "vst3"; Description: "VST3 plugin"; Types: full
 
 [Files]
+Source: "{#AnalyzerPath}"; DestDir: "{app}"; DestName: "aid-analyze.exe"; Components: standalone; Flags: ignoreversion
 Source: "{#SrcDir}\Audio Interface Diag.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
 Source: "{#SrcDir}\Audio Interface Diag.clap"; DestDir: "{commoncf64}\CLAP"; Components: clap; Flags: ignoreversion
 Source: "{#SrcDir}\Audio Interface Diag.vst3\*"; DestDir: "{commoncf64}\VST3\Audio Interface Diag.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs
