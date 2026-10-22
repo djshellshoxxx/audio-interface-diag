@@ -46,6 +46,10 @@ Linux build dependencies: `libasound2-dev libjack-jackd2-dev libgl-dev libx11-xc
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds and publishes installers and portable builds for Windows and Linux.
 
+## Wiki
+
+Wiki source pages are in [docs/wiki/](docs/wiki/Home.md): user guide, developer guide, architecture rationale and codebase map.
+
 ## Layout
 
 - `src/` — portable diagnostic core (DSP, rules, planner, session state, reports). No audio-thread or GUI code.
