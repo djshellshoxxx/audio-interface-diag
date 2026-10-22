@@ -1,10 +1,12 @@
 //! State shared between the audio thread, the background task executor and the GUI. The audio
 //! thread only touches atomics, the lock-free event ring, and `try_lock`s the capture buffers.
 
+use audio_interface_diag::{BurnIn, BurnInTelemetry};
 use nih_plug::prelude::AtomicF32;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::Mutex;
+use std::time::Instant;
 
 pub const EVENT_LOG_CAPACITY: usize = 2000;
 pub const MINUS_INF_DB: f32 = -150.0;
@@ -74,6 +76,7 @@ pub struct Event {
 
 #[derive(Debug, Default, Clone)]
 pub struct LatencyResults {
+    pub epoch: u64,
     pub sample_rate: f32,
     pub runs_samples: Vec<f64>,
     pub failures: u32,
@@ -95,6 +98,8 @@ impl AtomicF64 {
 }
 
 pub struct Shared {
+    pub burn_in: Mutex<Option<(BurnIn, Instant)>>,
+    pub context_epoch: AtomicU64,
     // Context
     pub sample_rate: AtomicF32,
     pub max_buffer: AtomicU32,
@@ -147,8 +152,12 @@ pub struct Shared {
     pub latency_busy: AtomicBool,
     pub latency_reference: Mutex<Vec<f32>>,
     pub latency_capture: Mutex<Vec<f32>>,
+    pub latency_capture_epoch: AtomicU64,
+    pub latency_capture_rate: AtomicF32,
     pub latency_max_delay: AtomicU32,
     pub latency: Mutex<LatencyResults>,
+    /// User-entered host compensation; negative means not supplied.
+    pub host_compensation_samples: AtomicF32,
 
     // Requests from GUI
     pub reset_request: AtomicBool,
@@ -163,6 +172,8 @@ impl Shared {
     pub fn new(consumer: rtrb::Consumer<Event>) -> Self {
         let db = || AtomicF32::new(MINUS_INF_DB);
         Self {
+            burn_in: Mutex::new(None),
+            context_epoch: AtomicU64::new(0),
             sample_rate: AtomicF32::new(0.0),
             max_buffer: AtomicU32::new(0),
             last_block: AtomicU32::new(0),
@@ -204,8 +215,11 @@ impl Shared {
             latency_busy: AtomicBool::new(false),
             latency_reference: Mutex::new(Vec::new()),
             latency_capture: Mutex::new(Vec::new()),
+            latency_capture_epoch: AtomicU64::new(0),
+            latency_capture_rate: AtomicF32::new(0.0),
             latency_max_delay: AtomicU32::new(0),
             latency: Mutex::new(LatencyResults::default()),
+            host_compensation_samples: AtomicF32::new(-1.0),
             reset_request: AtomicBool::new(false),
             events_in: Mutex::new(consumer),
             event_log: Mutex::new(VecDeque::with_capacity(EVENT_LOG_CAPACITY)),
@@ -246,11 +260,76 @@ impl Shared {
     }
 
     pub fn clear_session(&self) {
+        self.disarm_output();
         self.drain_events();
         self.event_log.lock().unwrap().clear();
         *self.latency.lock().unwrap() = LatencyResults::default();
         self.zero_counters();
         self.reset_request.store(true, Relaxed);
+    }
+
+    /// Lifecycle transitions require fresh explicit arming. Atomics only, so this
+    /// can also run in the host's reset/deactivate callbacks.
+    pub fn disarm_output(&self) {
+        self.context_epoch.fetch_add(1, Relaxed);
+        self.host_compensation_samples.store(-1.0, Relaxed);
+        self.armed.store(false, Relaxed);
+        self.generating.store(false, Relaxed);
+        self.high_level_ack.store(false, Relaxed);
+        self.latency_remaining.store(0, Relaxed);
+    }
+
+    pub fn latency_results(&self) -> LatencyResults {
+        let results = self.latency.lock().unwrap();
+        if results.epoch == self.context_epoch.load(Relaxed) {
+            results.clone()
+        } else {
+            LatencyResults::default()
+        }
+    }
+
+    fn burn_in_telemetry(&self) -> BurnInTelemetry {
+        let faults = [
+            &self.dropouts,
+            &self.deadline_misses,
+            &self.clip_runs,
+            &self.non_finite,
+            &self.signal_lost,
+        ]
+        .iter()
+        .fold(0u64, |total, count| {
+            total.saturating_add(count.load(Relaxed))
+        });
+        BurnInTelemetry {
+            epoch: self.context_epoch.load(Relaxed),
+            callbacks: self.callbacks.load(Relaxed),
+            faults,
+            sample_rate: self.sample_rate.load(Relaxed) as f64,
+        }
+    }
+
+    pub fn start_burn_in(&self, seconds: f64) -> Result<(), &'static str> {
+        if self.armed.load(Relaxed) {
+            return Err("stop the generator before starting passive burn-in");
+        }
+        let run = BurnIn::new(seconds, self.burn_in_telemetry())?;
+        *self.burn_in.lock().unwrap() = Some((run, Instant::now()));
+        Ok(())
+    }
+
+    /// Non-realtime only. Hum background tasks keep this progressing with the
+    /// editor closed; report/UI polling also detects stopped processing.
+    pub fn poll_burn_in(&self) -> Option<BurnIn> {
+        let mut slot = self.burn_in.lock().unwrap();
+        let (run, started) = slot.as_mut()?;
+        run.observe(started.elapsed().as_secs_f64(), self.burn_in_telemetry());
+        Some(run.clone())
+    }
+
+    pub fn stop_burn_in(&self) {
+        if let Some((run, _)) = self.burn_in.lock().unwrap().as_mut() {
+            run.abort();
+        }
     }
 
     /// Resets all session counters. Safe from any thread (atomics only).
