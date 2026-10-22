@@ -8,7 +8,10 @@ add_executable(aid_compatibility compatibility.cpp
     "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/plugprovider.cpp"
     "${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp")
 if(APPLE)
+    enable_language(OBJCXX)
     target_sources(aid_compatibility PRIVATE "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_mac.mm")
+    # The SDK's macOS module loader owns Cocoa objects using ARC.
+    target_compile_options(aid_compatibility PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
     target_link_libraries(aid_compatibility PRIVATE "-framework Cocoa")
 elseif(WIN32)
     target_sources(aid_compatibility PRIVATE "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_win32.cpp")
