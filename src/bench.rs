@@ -25,7 +25,7 @@ pub fn measure_tone(
         || !frequency.is_finite()
         || rate <= 0.0
         || frequency <= 0.0
-        || frequency * 3.0 >= rate
+        || frequency * 4.0 >= rate
     {
         return Err("invalid format or insufficient harmonic bandwidth");
     }

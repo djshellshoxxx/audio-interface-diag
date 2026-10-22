@@ -25,7 +25,7 @@ fn invalid_captures_never_produce_measurements() {
     for rate in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         assert!(measure_tone(&samples, rate, 1000.0).is_err());
     }
-    for frequency in [0.0, -1.0, 1000.1, 16_000.0, f64::NAN] {
+    for frequency in [0.0, -1.0, 1000.1, 12_000.0, 15_000.0, 16_000.0, f64::NAN] {
         assert!(measure_tone(&samples, 48_000.0, frequency).is_err());
     }
     assert!(measure_tone(&[], 48_000.0, 1000.0).is_err());
