@@ -1,0 +1,1 @@
+{"version":"0.0.2","params":{"clip_thr":{"f32":-0.1},"gen_chan":{"i32":0},"gen_freq":{"f32":6341.797},"gen_level":{"f32":-48.0},"gen_type":{"i32":1},"mode":{"i32":1},"return":{"i32":0},"sa_mon":{"bool":false}},"fields":{"editor-state":"{\"size\":[980,660]}"}}

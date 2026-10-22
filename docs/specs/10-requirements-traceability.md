@@ -29,9 +29,9 @@ Status key:
 | ENG-001 | buffer sweep | SPEC / NATIVE |
 | ENG-002 | physical RTL test | PLUGIN (5-run median/min/max/spread) |
 | ENG-003 | channel map | SPEC / NATIVE |
-| ENG-004 | noise/frequency/THD/crosstalk | PARTIAL (mains-hum observation; offline coherent sine THD/THD+N CLI) / NATIVE acquisition and remaining tests |
+| ENG-004 | noise/frequency/THD/crosstalk | PARTIAL (mains-hum observation; offline coherent sine THD/THD+N, noise/hum and pairwise crosstalk CLI) / NATIVE acquisition and remaining tests |
 | ENG-005 | drift and burn-in | PARTIAL (passive host-path burn-in UI/reporting) / NATIVE clock drift and hardware burn-in |
-| HOST-001 | generic native device enumeration | PLUGIN (Devices screen, default host; worker scan of advertised input/output formats, channels, rates and buffers; no stream-open qualification) |
+| HOST-001 | generic native device enumeration | PLUGIN (Devices screen and headless `devices` CLI, default host; worker scan of advertised input/output formats, channels, rates and buffers; no stream-open qualification) |
 | HOST-002 | WASAPI-specific advanced telemetry | SPEC / NATIVE |
 | HOST-003 | CoreAudio advanced telemetry | SPEC / NATIVE |
 | HOST-004 | ALSA/JACK/PipeWire telemetry | SPEC / NATIVE |

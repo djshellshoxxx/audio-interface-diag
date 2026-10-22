@@ -110,3 +110,40 @@ mod tests {
         }
     }
 }
+
+/// Convert discovery evidence to portable findings for headless inventory workflows.
+/// Enumeration never opens a stream and must not be treated as device qualification.
+pub fn native_inventory_report(
+    devices: Result<Vec<NativeDeviceSummary>, String>,
+) -> crate::SessionSummary {
+    use crate::{Edition, Finding, Severity};
+    let findings = match devices {
+        Ok(devices) if !devices.is_empty() => devices.into_iter().map(|device| {
+            let describe = |formats: Result<Vec<NativeFormatRange>, String>| match formats {
+                Ok(formats) if formats.is_empty() => "no advertised formats".into(),
+                Ok(formats) => formats.into_iter().map(|f| {
+                    let buffers = f.buffer_frames.map(|(min, max)| format!("{min}..{max} frames"))
+                        .unwrap_or_else(|| "unknown buffer range".into());
+                    format!("{} channels, {}..{} Hz, {}, {buffers}", f.channels, f.min_rate, f.max_rate, f.sample_format)
+                }).collect::<Vec<_>>().join("; "),
+                Err(error) => format!("unavailable: {error}"),
+            };
+            Finding {
+                id: "native.inventory", severity: Severity::Info,
+                title: device.name,
+                evidence: format!("Host {}; default input {}; default output {}; input [{}]; output [{}]", device.host_api, device.is_default_input, device.is_default_output, describe(device.input_formats), describe(device.output_formats)),
+                action: "Advertised capabilities are not stream-open qualification. Backend-specific telemetry and stable endpoint identity are not established by this inventory.".into(),
+            }
+        }).collect(),
+        result => vec![Finding {
+            id: "native.inventory", severity: Severity::Unavailable,
+            title: "Native device inventory unavailable".into(),
+            evidence: result.err().unwrap_or_else(|| "default host enumerated no devices".into()),
+            action: "Enable the native-audio feature and verify backend/device availability. No streams were opened or settings changed.".into(),
+        }],
+    };
+    crate::SessionSummary {
+        edition: Edition::Engineer,
+        findings,
+    }
+}
