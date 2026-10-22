@@ -40,6 +40,8 @@ Name: "clap"; Description: "CLAP plugin"; Types: full
 Name: "vst3"; Description: "VST3 plugin"; Types: full
 
 [Files]
+Source: "{#SrcDir}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SrcDir}\..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#AnalyzerPath}"; DestDir: "{app}"; DestName: "aid-analyze.exe"; Components: standalone; Flags: ignoreversion
 Source: "{#SrcDir}\Audio Interface Diag.exe"; DestDir: "{app}"; Components: standalone; Flags: ignoreversion
 Source: "{#SrcDir}\Audio Interface Diag.clap"; DestDir: "{commoncf64}\CLAP"; Components: clap; Flags: ignoreversion

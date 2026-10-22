@@ -1,7 +1,12 @@
 name: ci
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
+    branches-ignore: ["release/**"]
   pull_request:
 
 env:
@@ -16,8 +21,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
-      - run: cargo test -p audio-interface-diag --all-targets
-      - run: cargo clippy -p audio-interface-diag --all-targets -- -D warnings
+      - run: cargo test -p audio-interface-diag --all-targets --locked
+      - run: cargo clippy -p audio-interface-diag --all-targets --locked -- -D warnings
 
   workspace:
     runs-on: ubuntu-latest
@@ -29,15 +34,25 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --all-targets
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --all-targets --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo xtask bundle aid_plugin --release
+      - run: python packaging/build_vst3.py
+      - run: python packaging/third_party_notices.py
+      - run: python packaging/validate_vst3.py
 
-  windows:
-    runs-on: windows-latest
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace
+      - run: cargo test --workspace --locked
       - run: cargo xtask bundle aid_plugin --release
+      - run: python packaging/build_vst3.py
+      - run: python packaging/third_party_notices.py
+      - run: python packaging/validate_vst3.py

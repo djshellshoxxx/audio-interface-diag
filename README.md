@@ -6,7 +6,7 @@ Audio Interface Diag (AID) is a sister diagnostic tool to DeckChek and MIDI Test
 - **DAW** — non-disruptive production diagnostics while the DAW remains authoritative for the interface.
 - **Engineer / Technician** — armed active tests such as loopback round-trip latency.
 
-AID ships as a **CLAP plugin, VST3 plugin and standalone application** (Windows and Linux). Downloads are on the GitHub Releases page.
+AID ships as a **CLAP plugin, VST3 plugin and standalone application** (Windows, macOS and Linux). Downloads are on the GitHub Releases page.
 
 ## Features
 
@@ -31,20 +31,31 @@ Safety: Live/DAW never generate signal or alter audio; host reset/deactivation/s
 
 Offline sine-capture distortion measurement is available through
 `aid-analyze tone 48000 1000 capture.f32le` (or
-`cargo run -- tone 48000 1000 capture.f32le` from source). It exports JSON with relative
-THD/THD+N and rejects invalid captures. See
+`cargo run -- tone 48000 1000 capture.f32le` from source). Noise and mains-family
+evidence is available with `aid-analyze noise 48000 capture.f32le`; pairwise tone
+leakage uses `aid-analyze crosstalk 48000 1000 driven.f32le victim.f32le`.
+`aid-analyze devices` exports advertised default-host device capabilities without
+opening streams (source builds require `--features native-audio`). These commands
+export JSON and reject invalid captures. See
 [capture format and measurement limits](docs/specs/11-offline-bench-analysis.md).
 
 ```bash
 cargo test --workspace
 cargo run -- live                          # CLI planner
-cargo xtask bundle aid_plugin --release    # CLAP, VST3 and standalone in target/bundled
+cargo xtask bundle aid_plugin --release    # CLAP and standalone in target/bundled
+python3 packaging/build_vst3.py           # self-contained MIT-wrapper VST3
+python3 packaging/third_party_notices.py   # required distribution notices
+python3 packaging/validate_vst3.py         # native SDK + legacy-state checks
+cargo build --release --features native-audio --locked # headless analyzer
 packaging/linux/package.sh v0.0.2-beta     # Linux .deb + portable tarball in dist/
 ```
 
 Linux build dependencies: `libasound2-dev libjack-jackd2-dev libgl-dev libx11-xcb-dev libxcursor-dev libxcb-icccm4-dev libxcb-dri2-0-dev libxkbcommon-dev pkg-config`.
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds and publishes installers and portable builds for Windows and Linux.
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds installers and portable builds for Windows/Linux and macOS arm64/x64
+CLAP, VST3 and standalone bundles. Release-branch candidates remain drafts until
+the applicable qualification gates are reviewed. Owned code is proprietary/all
+rights reserved; dependency licenses and notices remain in force.
 
 ## Layout
 

@@ -1,9 +1,9 @@
 [package]
 name = "audio-interface-diag"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 description = "Audio interface diagnostics for live, DAW and engineering workflows"
-license = "LicenseRef-Proprietary-TBD"
+license = "LicenseRef-Proprietary"
 
 [lib]
 name = "audio_interface_diag"

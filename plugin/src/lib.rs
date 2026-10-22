@@ -875,27 +875,14 @@ impl ClapPlugin for AudioInterfaceDiag {
     ];
 }
 
-impl Vst3Plugin for AudioInterfaceDiag {
-    const VST3_CLASS_ID: [u8; 16] = *b"CDLAudioIfaceDia";
-    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
-        Vst3SubCategory::Fx,
-        Vst3SubCategory::Analyzer,
-        Vst3SubCategory::Tools,
-    ];
-}
-
 nih_export_clap!(AudioInterfaceDiag);
-// nih-plug's VST3 vtable macro ends in a semicolon in expression position, which newer
-// rustc releases reject (rust-lang/rust#79813). The code is upstream; allow it here.
-#[allow(
-    unknown_lints,
-    semicolon_in_expressions_from_macros,
-    semicolon_in_expressions_from_non_local_macros
-)]
-mod vst3_export {
+
+// The proprietary build uses the MIT CLAP-to-VST3 wrapper. Do not enable
+// NIH-plug's GPL vst3-sys feature; the regression tests remain format independent.
+#[cfg(test)]
+mod regression_tests {
     use super::AudioInterfaceDiag;
     use nih_plug::prelude::*;
-    nih_export_vst3!(AudioInterfaceDiag);
 
     #[cfg(test)]
     mod lifecycle_tests {

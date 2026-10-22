@@ -12,5 +12,5 @@
   updated requirement traceability; cross-platform CI must pass before integration.
 - [ ] Hardware checkpoint: desktop GUI, physical loopback, real disconnects and
   device matrix. Remains unqualified until real measurements are available.
-- [ ] Distribution metadata: resolve the core manifest's existing
-  `LicenseRef-Proprietary-TBD` and final distribution notices before public release.
+- [x] Distribution metadata: owner selected proprietary/all rights reserved; GPL
+  VST3 bindings replaced with pinned MIT wrapper/SDK, retained third-party notices.
