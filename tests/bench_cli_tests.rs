@@ -33,6 +33,10 @@ fn cli_exports_valid_capture_and_rejects_missing_or_malformed_data() {
         .contains("UNAVAILABLE"));
     std::fs::write(&capture, [0u8; 3]).unwrap();
     assert_eq!(run().status.code(), Some(2));
+    let oversized = std::fs::File::create(&capture).unwrap();
+    oversized.set_len(32 * 1024 * 1024 + 4).unwrap();
+    drop(oversized);
+    assert_eq!(run().status.code(), Some(2));
     std::fs::remove_file(&capture).unwrap();
     assert_eq!(run().status.code(), Some(2));
     std::fs::remove_dir(&dir).unwrap();
