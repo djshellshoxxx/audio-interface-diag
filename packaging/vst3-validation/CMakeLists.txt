@@ -17,3 +17,6 @@ else()
 endif()
 target_compile_features(aid_compatibility PRIVATE cxx_std_17)
 target_link_libraries(aid_compatibility PRIVATE sdk_hosting)
+# A root project with explicit references is required by Visual Studio generators;
+# directly naming the nested EXCLUDE_FROM_ALL validator project is not portable.
+add_custom_target(aid_validation_tools DEPENDS aid_compatibility validator)

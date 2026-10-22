@@ -51,7 +51,23 @@ def upstream_licenses(package):
             if error.code != 404:
                 raise
     if not list(cache.iterdir()):
-        raise RuntimeError(f"Missing pinned upstream license: {slug}@{commit}")
+        if (package["name"], package["version"]) not in {("block", "0.1.6"), ("malloc_buf", "0.0.6"), ("dispatch", "0.2.0")} or package.get("license") != "MIT":
+            raise RuntimeError(f"Missing pinned upstream license: {slug}@{commit}")
+        # These exact upstream releases declare MIT but omit a license file even
+        # at the release commit. Retain the author's actual grant/attribution and
+        # locked package provenance, plus the unmodified canonical MIT template.
+        lock = (ROOT / "Cargo.lock").read_text()
+        pattern = r'\[\[package\]\]\nname = "' + re.escape(package["name"]) + r'"\nversion = "' + re.escape(package["version"]) + r'"\nsource = "[^"\n]+"\nchecksum = "([^"\n]+)"'
+        checksum = re.search(pattern, lock)
+        if not checksum:
+            raise RuntimeError(f"Missing locked checksum for {package['name']}")
+        declaration = (f"Upstream {package['name']} {package['version']} omits a license text/copyright notice.\n"
+                       f"Original Cargo license declaration: {package['license']}\n"
+                       f"Original Cargo authors declaration: {json.dumps(package.get('authors', []))}\n"
+                       f"Registry archive SHA256: {checksum[1]}\nPinned upstream: https://github.com/{slug}/tree/{commit}\n"
+                       "Canonical SPDX MIT permission text follows. Its copyright placeholders are template slots, not invented attribution. No copyright year or holder has been inferred.\n")
+        (cache / "UPSTREAM-DECLARATION.txt").write_text(declaration, encoding="utf-8")
+        shutil.copy2(ROOT / "packaging/licenses/MIT-SPDX.txt", cache / "MIT-SPDX.txt")
     return sorted(cache.iterdir())
 
 

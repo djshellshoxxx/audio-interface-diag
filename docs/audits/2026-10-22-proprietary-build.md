@@ -38,3 +38,11 @@ libraries remain supplied by the user's system under their own licenses.
 Build provenance records MIT dependency pins, Cargo.lock digest and the exact
 embedded CLAP digest. Packaging replaces the known generated VST3 directory
 before staging; the old NIH-generated VST3 cannot be reused as a release asset.
+
+Some old Apple-platform crates (`block` 0.1.6, `malloc_buf` 0.0.6 and `dispatch`
+0.2.0) declare MIT in their original Cargo manifests but omit a license text even
+at their release commits. Their notices explicitly retain the original
+author/license declaration, locked archive SHA256 and pinned source provenance,
+plus the unmodified canonical SPDX MIT template. Its placeholder slots are
+identified as template text; no copyright year or holder is invented. This exact
+allowlist does not permit skipping other missing dependency licenses.

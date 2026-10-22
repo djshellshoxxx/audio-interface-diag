@@ -16,7 +16,7 @@ def main():
     build = ROOT / "target/vst3-validation"
     run("cmake", "-S", str(ROOT / "packaging/vst3-validation"), "-B", str(build),
         "-DCMAKE_BUILD_TYPE=Release", f"-DVST3_SDK_ROOT={dependencies / 'vst3sdk'}")
-    run("cmake", "--build", str(build), "--config", "Release", "--target", "aid_compatibility", "validator", "--parallel", "2")
+    run("cmake", "--build", str(build), "--config", "Release", "--target", "aid_validation_tools", "--parallel", "2")
     suffix = ".exe" if sys.platform == "win32" else ""
     validator = build / f"bin/Release/validator{suffix}"
     compatibility = build / ("Release" if sys.platform == "win32" else "") / f"aid_compatibility{suffix}"
