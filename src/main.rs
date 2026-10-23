@@ -1,6 +1,18 @@
 use audio_interface_diag::{plan, Edition};
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("alsa") {
+        let report = audio_interface_diag::alsa_pcm_report(std::path::Path::new("/proc/asound"));
+        println!("{}", audio_interface_diag::render_json(&report));
+        if report
+            .findings
+            .iter()
+            .all(|f| f.severity == audio_interface_diag::Severity::Unavailable)
+        {
+            std::process::exit(1);
+        }
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("devices") {
         let report = audio_interface_diag::native_inventory_report(
             audio_interface_diag::enumerate_native_devices(),
@@ -30,7 +42,7 @@ fn main() {
         Some("daw") => Edition::Daw,
         Some("engineer") | Some("tech") => Edition::Engineer,
         _ => {
-            eprintln!("usage: audio-interface-diag <live|daw|engineer>\n       audio-interface-diag tone <sample-rate> <frequency> <mono.f32le>\n       audio-interface-diag noise <sample-rate> <mono.f32le>\n       audio-interface-diag crosstalk <sample-rate> <frequency> <driven.f32le> <victim.f32le>\n       audio-interface-diag devices");
+            eprintln!("usage: audio-interface-diag <live|daw|engineer>\n       audio-interface-diag tone <sample-rate> <frequency> <mono.f32le>\n       audio-interface-diag noise <sample-rate> <mono.f32le>\n       audio-interface-diag crosstalk <sample-rate> <frequency> <driven.f32le> <victim.f32le>\n       audio-interface-diag devices\n       audio-interface-diag alsa");
             return;
         }
     };

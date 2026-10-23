@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches-ignore: ["release/**"]
+    branches: [main]
   pull_request:
 
 env:

@@ -1,6 +1,6 @@
 [package]
 name = "aid_plugin"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 description = "Audio Interface Diag as CLAP, VST3 and standalone"
 license = "LicenseRef-Proprietary"

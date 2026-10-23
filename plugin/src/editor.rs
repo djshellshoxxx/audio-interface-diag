@@ -108,7 +108,11 @@ struct Snapshot {
 }
 
 type DeviceScanResult = Result<Vec<NativeDeviceSummary>, String>;
-type DeviceScanReceiver = std::sync::Mutex<std::sync::mpsc::Receiver<DeviceScanResult>>;
+struct DeviceScan {
+    advertised: DeviceScanResult,
+    alsa: Option<audio_interface_diag::SessionSummary>,
+}
+type DeviceScanReceiver = std::sync::Mutex<std::sync::mpsc::Receiver<DeviceScan>>;
 
 struct GuiState {
     burn_in_duration: f64,
@@ -124,6 +128,7 @@ struct GuiState {
     hum_ever: bool,
     markers: u32,
     devices: Option<DeviceScanResult>,
+    alsa_snapshot: Option<audio_interface_diag::SessionSummary>,
     device_scan: Option<DeviceScanReceiver>,
 }
 
@@ -142,6 +147,7 @@ pub fn create(params: Arc<AidParams>, shared: Arc<Shared>) -> Option<Box<dyn Edi
         hum_ever: false,
         markers: 0,
         devices: None,
+        alsa_snapshot: None,
         device_scan: None,
     };
     create_egui_editor(
@@ -506,6 +512,11 @@ fn counters(ui: &mut egui::Ui, shared: &Shared) {
                 "AID's own processing took a full buffer period.",
                 n(&shared.deadline_misses) > 0,
             );
+            let timing = shared.callback_timing();
+            let percentile = |q| audio_interface_diag::timing_percentile_upper_ms(&timing, q)
+                .map(|ms| format!("≤{ms:.3} ms")).unwrap_or_else(|| "unavailable".into());
+            stat(ui, "Callback p95 / p99", format!("{} / {}", percentile(0.95), percentile(0.99)),
+                "Measured AID execution-time upper bounds from a fixed histogram (≤26% bucket width); not driver-reported xruns.", false);
             let max_load = shared.max_load.load(Relaxed);
             stat(
                 ui,
@@ -613,6 +624,7 @@ fn live_screen(
     });
     ui.separator();
     meters(ui, shared);
+    crate::plots::draw(ui, shared, ACCENT);
     ui.add_space(6.0);
     ui.columns(2, |cols| {
         counters(&mut cols[0], shared);
@@ -698,6 +710,7 @@ fn daw_screen(
     });
     ui.separator();
     meters(ui, shared);
+    crate::plots::draw(ui, shared, ACCENT);
     ui.columns(2, |cols| {
         counters(&mut cols[0], shared);
         signal_details(&mut cols[1], shared);
@@ -893,6 +906,7 @@ fn engineer_screen(
                 ui.label(RichText::new("Not measured").color(GREY));
             }
         }
+        crate::plots::draw(ui, shared, ACCENT);
     });
 }
 
@@ -900,7 +914,8 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
     if let Some(receiver) = &mut state.device_scan {
         match receiver.get_mut().unwrap().try_recv() {
             Ok(result) => {
-                state.devices = Some(result);
+                state.devices = Some(result.advertised);
+                state.alsa_snapshot = result.alsa;
                 state.device_scan = None;
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -973,11 +988,16 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
         )
         .clicked()
     {
+        state.alsa_snapshot = None;
         let (sender, receiver) = std::sync::mpsc::channel();
         match std::thread::Builder::new()
             .name("aid-device-scan".into())
             .spawn(move || {
-                let _ = sender.send(enumerate_native_devices());
+                let advertised = enumerate_native_devices();
+                let alsa = cfg!(target_os = "linux").then(|| {
+                    audio_interface_diag::alsa_pcm_report(std::path::Path::new("/proc/asound"))
+                });
+                let _ = sender.send(DeviceScan { advertised, alsa });
             }) {
             Ok(_) => {
                 state.device_scan = Some(std::sync::Mutex::new(receiver));
@@ -1038,6 +1058,17 @@ fn devices_screen(ui: &mut egui::Ui, shared: &Shared, state: &mut GuiState) {
             ui.label(RichText::new(format!("Unavailable: {e}")).color(AMBER));
         }
         None => {}
+    }
+    if let Some(snapshot) = &state.alsa_snapshot {
+        ui.separator();
+        ui.heading("ALSA kernel PCM snapshot (last scan)");
+        ui.label("Read-only reported current streams; distinct from advertised formats and from JACK/PipeWire routing. This snapshot is not live health telemetry.");
+        for finding in &snapshot.findings {
+            ui.collapsing(format!("{:?}: {}", finding.severity, finding.title), |ui| {
+                ui.label(&finding.evidence);
+                ui.label(&finding.action);
+            });
+        }
     }
 }
 

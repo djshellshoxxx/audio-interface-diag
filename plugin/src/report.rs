@@ -85,6 +85,20 @@ pub fn build_findings(shared: &Shared) -> Vec<Finding> {
         }
     }
 
+    let timing = shared.callback_timing();
+    let p95 = audio_interface_diag::timing_percentile_upper_ms(&timing, 0.95);
+    let p99 = audio_interface_diag::timing_percentile_upper_ms(&timing, 0.99);
+    findings.push(match p95.zip(p99) {
+        Some((p95, p99)) => finding("stream.callback_percentiles", Severity::Info,
+            "AID callback timing percentile bounds",
+            format!("{} observations; measured callback execution p95 <= {p95:.6} ms, p99 <= {p99:.6} ms. Fixed logarithmic histogram; upper bounds, at most 26% bucket width except the first <=1 us bucket. This is AID execution, not driver xrun telemetry.", timing.iter().fold(0u64, |sum, count| sum.saturating_add(*count))),
+            "Compare like-for-like buffer/rate contexts and inspect deadline misses; do not infer a driver fault from AID timing alone."),
+        None => finding("stream.callback_percentiles", Severity::Unavailable,
+            "AID callback timing percentiles unavailable",
+            "No timing observations or a percentile reached the overflow bucket.".into(),
+            "Run audio through AID and inspect maximum callback duration/deadline misses."),
+    });
+
     // Clipping (warn or fail depending on recurrence).
     let runs = shared.clip_runs.load(Relaxed);
     let clipped = shared.clipped_samples.load(Relaxed);

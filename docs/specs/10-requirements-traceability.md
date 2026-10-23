@@ -34,9 +34,9 @@ Status key:
 | HOST-001 | generic native device enumeration | PLUGIN (Devices screen and headless `devices` CLI, default host; worker scan of advertised input/output formats, channels, rates and buffers; no stream-open qualification) |
 | HOST-002 | WASAPI-specific advanced telemetry | SPEC / NATIVE |
 | HOST-003 | CoreAudio advanced telemetry | SPEC / NATIVE |
-| HOST-004 | ALSA/JACK/PipeWire telemetry | SPEC / NATIVE |
+| HOST-004 | ALSA/JACK/PipeWire telemetry | PARTIAL (passive ALSA PCM format/state/delay snapshot) / NATIVE (JACK/PipeWire routing, stable IDs and device events) |
 | UI-001 | Live/DAW/Engineer screens | PLUGIN (egui) |
-| UI-002 | plots/timeline/help/tooltips | PARTIAL (timeline, help, tooltips; plots pending) |
+| UI-002 | plots/timeline/help/tooltips | PARTIAL (timeline, help, tooltips, bounded background scope/spectrum; remaining plots pending) |
 | DATA-001 | contextual result/evidence model | CORE (pass/info/warn/fail/unavailable/not-run) |
 | DATA-002 | JSON/CSV/human reports | CORE + PLUGIN export |
 | QA-001 | unit tests for portable measurement core | CORE |

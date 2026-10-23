@@ -34,6 +34,8 @@ Offline sine-capture distortion measurement is available through
 `cargo run -- tone 48000 1000 capture.f32le` from source). Noise and mains-family
 evidence is available with `aid-analyze noise 48000 capture.f32le`; pairwise tone
 leakage uses `aid-analyze crosstalk 48000 1000 driven.f32le victim.f32le`.
+The 0.0.4 development branch adds background scope/spectrum, callback p95/p99
+upper bounds, and read-only `aid-analyze alsa` kernel PCM evidence on Linux.
 `aid-analyze devices` exports advertised default-host device capabilities without
 opening streams (source builds require `--features native-audio`). These commands
 export JSON and reject invalid captures. See

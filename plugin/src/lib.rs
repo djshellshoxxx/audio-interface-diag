@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod editor;
+mod plots;
 pub mod report;
 pub mod shared;
 
@@ -256,6 +257,7 @@ impl AudioInterfaceDiag {
         self.epoch = now;
         self.last_call = None;
         self.window_pos = 0;
+        self.hum_pos = 0;
         self.sum_sq = [0.0; 2];
         self.sum = [0.0; 2];
         self.peak = [0.0; 2];
@@ -368,6 +370,18 @@ impl AudioInterfaceDiag {
     fn submit_hum(&mut self, context: &mut impl ProcessContext<Self>) {
         if let Ok(mut buffer) = self.shared.hum_buffer.try_lock() {
             if buffer.len() == self.hum_buffer.len() {
+                self.shared
+                    .hum_capture_epoch
+                    .store(self.shared.context_epoch.load(Relaxed), Relaxed);
+                self.shared.hum_sample_rate.store(self.sample_rate, Relaxed);
+                self.shared.hum_capture_ticks.store(
+                    self.shared
+                        .plot_clock
+                        .elapsed()
+                        .as_nanos()
+                        .min(u64::MAX as u128) as u64,
+                    Relaxed,
+                );
                 std::mem::swap(&mut *buffer, &mut self.hum_buffer);
                 drop(buffer);
                 context.execute_background(Task::Hum);
@@ -404,9 +418,31 @@ fn run_hum_task(shared: &Shared) {
     shared.poll_burn_in();
     let buffer = shared.hum_buffer.lock().unwrap();
     let sr = shared.hum_sample_rate.load(Relaxed) as f64;
+    let epoch = shared.hum_capture_epoch.load(Relaxed);
+    let captured = shared
+        .plot_clock
+        .checked_add(std::time::Duration::from_nanos(
+            shared.hum_capture_ticks.load(Relaxed),
+        ));
     let rms = audio_interface_diag::dbfs_rms(&buffer).unwrap_or(f64::NEG_INFINITY);
     let hum = analyze_hum(&buffer, sr);
+    let plots = audio_interface_diag::analyze_spectrum(&buffer, sr, 4096)
+        .zip(audio_interface_diag::scope_envelope(&buffer, 256))
+        .and_then(|(spectrum, scope)| {
+            Some(crate::shared::SignalPlots {
+                epoch,
+                captured: captured?,
+                sample_rate: sr,
+                scope_seconds: buffer.len() as f64 / sr,
+                scope,
+                spectrum,
+            })
+        });
     drop(buffer);
+    if epoch != shared.context_epoch.load(Relaxed) {
+        return;
+    }
+    *shared.plots.lock().unwrap() = plots;
     shared
         .hum_signal_db
         .store(rms.max(MINUS_INF_DB as f64) as f32, Relaxed);
@@ -749,12 +785,12 @@ impl Plugin for AudioInterfaceDiag {
             }
 
             let mono = if channels >= 2 {
-                (input[0] + input[1]) * 0.5
+                input[0] * 0.5 + input[1] * 0.5
             } else {
                 input[0]
             };
             if self.hum_pos < self.hum_buffer.len() {
-                self.hum_buffer[self.hum_pos] = if mono.is_finite() { mono } else { 0.0 };
+                self.hum_buffer[self.hum_pos] = mono;
                 self.hum_pos += 1;
                 if self.hum_pos == self.hum_buffer.len() {
                     self.submit_hum(context);
@@ -847,6 +883,9 @@ impl Plugin for AudioInterfaceDiag {
         if load > self.shared.max_load.load(Relaxed) {
             self.shared.max_load.store(load, Relaxed);
         }
+        if let Some(bin) = audio_interface_diag::callback_timing_bucket(ms as f64) {
+            self.shared.timing_bins[bin].fetch_add(1, Relaxed);
+        }
         let avg = self.shared.avg_load.load(Relaxed);
         self.shared
             .avg_load
@@ -888,6 +927,50 @@ mod regression_tests {
     mod lifecycle_tests {
         use super::*;
         use std::sync::atomic::Ordering::Relaxed;
+
+        #[test]
+        fn plots_reject_stale_context_expired_and_invalid_capture() {
+            let plugin = AudioInterfaceDiag::default();
+            let shared = &plugin.shared;
+            shared.hum_sample_rate.store(48_000.0, Relaxed);
+            *shared.hum_buffer.lock().unwrap() =
+                audio_interface_diag::sine(750.0, -6.0, 48_000.0, 48_000).unwrap();
+            crate::run_hum_task(shared);
+            let plots = shared.plots.lock().unwrap().clone().unwrap();
+            assert!(plots.current(0, plots.captured));
+            assert!(!plots.current(1, plots.captured));
+            assert!(!plots.current(0, plots.captured + std::time::Duration::from_secs(4)));
+            assert!(!plots.current(0, plots.captured - std::time::Duration::from_secs(1)));
+            shared.hum_buffer.lock().unwrap()[100] = f32::NAN;
+            crate::run_hum_task(shared);
+            assert!(shared.plots.lock().unwrap().is_none());
+            shared.disarm_output();
+            crate::run_hum_task(shared);
+            assert!(shared.plots.lock().unwrap().is_none());
+        }
+
+        #[test]
+        fn reset_discards_partial_visual_capture_from_old_context() {
+            let mut plugin = AudioInterfaceDiag {
+                hum_pos: 123,
+                ..Default::default()
+            };
+            plugin.reset_session(std::time::Instant::now());
+            assert_eq!(plugin.hum_pos, 0);
+        }
+
+        #[test]
+        fn delayed_plot_work_does_not_make_old_capture_fresh() {
+            let mut plugin = AudioInterfaceDiag::default();
+            let shared = std::sync::Arc::get_mut(&mut plugin.shared).unwrap();
+            shared.plot_clock = std::time::Instant::now() - std::time::Duration::from_secs(4);
+            shared.hum_sample_rate.store(48_000.0, Relaxed);
+            *shared.hum_buffer.lock().unwrap() =
+                audio_interface_diag::sine(750.0, -6.0, 48_000.0, 48_000).unwrap();
+            crate::run_hum_task(shared);
+            let plots = shared.plots.lock().unwrap().clone().unwrap();
+            assert!(!plots.current(0, std::time::Instant::now()));
+        }
 
         #[test]
         fn event_flood_is_bounded_and_reports_loss() {

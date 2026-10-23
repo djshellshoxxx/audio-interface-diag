@@ -1,6 +1,6 @@
 [package]
 name = "audio-interface-diag"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 description = "Audio interface diagnostics for live, DAW and engineering workflows"
 license = "LicenseRef-Proprietary"
@@ -19,6 +19,7 @@ native-audio = ["dep:cpal"]
 
 [dependencies]
 cpal = { version = "0.15", optional = true }
+rustfft = "6"
 
 [dev-dependencies]
 
