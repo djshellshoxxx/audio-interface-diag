@@ -8,7 +8,9 @@ add_executable(aid_compatibility compatibility.cpp
     "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/plugprovider.cpp"
     "${VST3_SDK_ROOT}/public.sdk/source/common/memorystream.cpp")
 if(APPLE)
-    target_sources(aid_compatibility PRIVATE "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_mac.mm")
+    set(module_mac "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_mac.mm")
+    target_sources(aid_compatibility PRIVATE "${module_mac}")
+    set_source_files_properties("${module_mac}" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     target_link_libraries(aid_compatibility PRIVATE "-framework Cocoa")
 elseif(WIN32)
     target_sources(aid_compatibility PRIVATE "${VST3_SDK_ROOT}/public.sdk/source/vst/hosting/module_win32.cpp")
